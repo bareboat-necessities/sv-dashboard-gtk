@@ -111,15 +111,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compute artifact tag
-        shell: msys2 {0}
-        run: |
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            echo "ARTIFACT_TAG=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
-          else
-            echo "ARTIFACT_TAG=sha-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
-          fi
-
       - name: Set up MSYS2 (MINGW64)
         uses: msys2/setup-msys2@v2
         with:
@@ -137,6 +128,15 @@ jobs:
             unzip
             p7zip
             git
+
+      - name: Compute artifact tag
+        shell: msys2 {0}
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "ARTIFACT_TAG=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+          else
+            echo "ARTIFACT_TAG=sha-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          fi
 
       - name: Fetch Font Awesome (Free)
         shell: msys2 {0}
