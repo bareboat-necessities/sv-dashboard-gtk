@@ -15,6 +15,7 @@ sources = files(
   'src/MainWindow.cpp',
   'src/Desktop.cpp',
   'src/DesktopIcon.cpp',
+  'src/RuntimeEnv.cpp',
   'src/FontRegistry.cpp'
 )
 

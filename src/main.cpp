@@ -13,6 +13,8 @@ int main(int argc, char** argv) {
   g_unsetenv("FONTCONFIG_PATH");
 #endif
 
+  RuntimeEnv::setup(); // must run before Gtk::Application::create()
+
   FontRegistry reg;
   if (!reg.registerBundledFonts()) {
     std::cerr << "Warning: FA fonts not registered; icons may fall back.\n";
