@@ -4,13 +4,7 @@
 #include <glib.h>
 
 #include <iostream>
-
-#ifdef _WIN32
-  #define NOMINMAX
-  #include <windows.h>
-#else
-  #include <unistd.h>
-#endif
+#include <string>
 
 #include <pango/pangocairo.h>
 #include <pango/pango.h>
@@ -20,6 +14,12 @@
   #define SV_HAVE_PANGO_FC 1
 #else
   #define SV_HAVE_PANGO_FC 0
+#endif
+
+#ifdef _WIN32
+  #include <windows.h>
+#else
+  #include <unistd.h>
 #endif
 
 void FontRegistry::setFontDirOverride(std::string dir) {
