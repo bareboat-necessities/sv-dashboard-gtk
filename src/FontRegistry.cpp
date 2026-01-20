@@ -25,19 +25,30 @@ std::string FontRegistry::exeDir() {
 std::string FontRegistry::findFontDir() const {
   if (!font_dir_override_.empty()) return font_dir_override_;
 
-  // 1) Dev: ./assets/fonts relative to CWD
+  // allow env override (works on Linux + Windows)
+  if (const char* env = g_getenv("SV_DASHBOARD_FONT_DIR"); env && *env) {
+    return std::string(env);
+  }
+
+  // Dev: ./assets/fonts relative to CWD
   if (g_file_test("assets/fonts", G_FILE_TEST_IS_DIR)) return "assets/fonts";
 
-  // 2) Installed: <exe_dir>/../share/sv-dashboard-gtk/fonts
+  // Installed: <exe_dir>/../share/sv-dashboard-gtk/fonts
   const auto ed = exeDir();
   if (!ed.empty()) {
     char* p = g_build_filename(ed.c_str(), "..", "share", "sv-dashboard-gtk", "fonts", nullptr);
     std::string candidate = p ? p : "";
     g_free(p);
     if (!candidate.empty() && g_file_test(candidate.c_str(), G_FILE_TEST_IS_DIR)) return candidate;
+
+    // Portable layout (Windows zip): <exe_dir>/share/...
+    p = g_build_filename(ed.c_str(), "share", "sv-dashboard-gtk", "fonts", nullptr);
+    candidate = p ? p : "";
+    g_free(p);
+    if (!candidate.empty() && g_file_test(candidate.c_str(), G_FILE_TEST_IS_DIR)) return candidate;
   }
 
-  // 3) Common install locations
+  // Common install locations
   const char* prefixes[] = { "/usr/local/share", "/usr/share", nullptr };
   for (int i = 0; prefixes[i]; ++i) {
     char* p = g_build_filename(prefixes[i], "sv-dashboard-gtk", "fonts", nullptr);

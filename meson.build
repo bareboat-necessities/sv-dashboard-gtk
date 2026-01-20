@@ -2,6 +2,10 @@ project('sv-dashboard-gtk', 'cpp',
   version: '0.2.0',
   default_options: ['warning_level=3', 'cpp_std=c++20'])
 
+if host_machine.system() == 'windows'
+  add_project_link_arguments(['-static-libstdc++', '-static-libgcc'], language: 'cpp')
+endif
+
 gtkmm = dependency('gtkmm-3.0', required: true)
 fc    = dependency('fontconfig', required: true)
 

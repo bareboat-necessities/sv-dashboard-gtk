@@ -50,3 +50,100 @@ jobs:
         with:
           name: sv-dashboard-arm64
           path: build/sv-dashboard
+
+  build-windows:
+    name: build (windows x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSYS2 (MINGW64)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-gtkmm3
+            mingw-w64-x86_64-meson
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-fontconfig
+            mingw-w64-x86_64-curl
+            mingw-w64-x86_64-unzip
+            mingw-w64-x86_64-python
+            p7zip
+            git
+
+      - name: Fetch Font Awesome (Free)
+        shell: msys2 {0}
+        run: |
+          chmod +x scripts/fetch-fontawesome.sh
+          ./scripts/fetch-fontawesome.sh
+
+      - name: Configure
+        shell: msys2 {0}
+        run: |
+          meson setup build
+
+      - name: Build
+        shell: msys2 {0}
+        run: |
+          meson compile -C build
+
+      - name: Package portable zip
+        shell: msys2 {0}
+        run: |
+          rm -rf dist sv-dashboard-windows-x64.zip
+          mkdir -p dist/share dist/lib
+
+          # Put exe at root so Windows DLL search finds bundled DLLs
+          cp -f build/sv-dashboard.exe dist/sv-dashboard.exe
+
+          # Bundle FA fonts
+          mkdir -p dist/share/sv-dashboard-gtk/fonts
+          cp -f assets/fonts/*.ttf dist/share/sv-dashboard-gtk/fonts/
+
+          # Copy dependent DLLs next to exe
+          # Filter to mingw64 DLL paths and ignore system ones
+          for d in $(ldd build/sv-dashboard.exe | awk '{print $3}' | grep -E "^/mingw64/bin/.*\.dll$" | sort -u); do
+            cp -f "$d" dist/
+          done
+
+          # GLib schemas (GSettings)
+          mkdir -p dist/share/glib-2.0/schemas
+          cp -r /mingw64/share/glib-2.0/schemas/* dist/share/glib-2.0/schemas/
+          /mingw64/bin/glib-compile-schemas dist/share/glib-2.0/schemas
+
+          # gdk-pixbuf loaders + cache
+          mkdir -p dist/lib/gdk-pixbuf-2.0/2.10.0/loaders
+          cp -r /mingw64/lib/gdk-pixbuf-2.0/2.10.0/loaders/* dist/lib/gdk-pixbuf-2.0/2.10.0/loaders/
+          /mingw64/bin/gdk-pixbuf-query-loaders > dist/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache
+
+          # OPTIONAL but commonly needed by GTK apps: icon theme + glib runtime data
+          # (GTK may still run without these, but some widgets/icons may not)
+          mkdir -p dist/share/icons
+          if [ -d /mingw64/share/icons ]; then
+            cp -r /mingw64/share/icons/* dist/share/icons/ || true
+          fi
+
+          # Create run.bat (sets runtime env and starts the app)
+          cat > dist/run.bat <<'EOF'
+          @echo off
+          setlocal
+          set "DIR=%~dp0"
+          set "SV_DASHBOARD_FONT_DIR=%DIR%share\sv-dashboard-gtk\fonts"
+          set "GSETTINGS_SCHEMA_DIR=%DIR%share\glib-2.0\schemas"
+          set "GDK_PIXBUF_MODULE_FILE=%DIR%lib\gdk-pixbuf-2.0\2.10.0\loaders.cache"
+          set "GDK_PIXBUF_MODULEDIR=%DIR%lib\gdk-pixbuf-2.0\2.10.0\loaders"
+          "%DIR%sv-dashboard.exe"
+          endlocal
+          EOF
+
+          # Zip it
+          7z a sv-dashboard-windows-x64.zip ./dist/*
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sv-dashboard-windows-x64
+          path: sv-dashboard-windows-x64.zip
