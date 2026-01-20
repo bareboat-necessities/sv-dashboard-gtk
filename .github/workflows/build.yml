@@ -245,6 +245,8 @@ jobs:
           set "GDK_PIXBUF_MODULE_FILE=%DIR%lib\gdk-pixbuf-2.0\2.10.0\loaders.cache"
           set "GDK_PIXBUF_MODULEDIR=%DIR%lib\gdk-pixbuf-2.0\2.10.0\loaders"
           
+          set "PANGOCAIRO_BACKEND=fc"
+          
           "%DIR%sv-dashboard.exe"
           endlocal
           EOF
