@@ -12,6 +12,16 @@
   #include <unistd.h>
 #endif
 
+#include <pango/pangocairo.h>
+#include <pango/pango.h>
+
+#if __has_include(<pango/pangofc-fontmap.h>)
+  #include <pango/pangofc-fontmap.h>
+  #define SV_HAVE_PANGO_FC 1
+#else
+  #define SV_HAVE_PANGO_FC 0
+#endif
+
 void FontRegistry::setFontDirOverride(std::string dir) {
   font_dir_override_ = std::move(dir);
 }
@@ -98,39 +108,113 @@ std::string FontRegistry::findFontDir() const {
 }
 
 bool FontRegistry::registerBundledFonts() {
-  const char* dirEnv = std::getenv("SV_DASHBOARD_FONT_DIR");
-  if (!dirEnv || !*dirEnv) return false;
+  const auto dir = findFontDir();
+  if (dir.empty()) {
+    std::cerr
+      << "FontRegistry: could not locate bundled font directory.\n"
+      << "Run ./scripts/fetch-fontawesome.sh or bundle fonts with the app.\n";
+    return false;
+  }
 
-  std::filesystem::path fontDir(dirEnv);
-  if (!std::filesystem::exists(fontDir)) return false;
+  // Sanity check: required files exist
+  char* solid  = g_build_filename(dir.c_str(), "fa-solid-900.ttf", nullptr);
+  char* brands = g_build_filename(dir.c_str(), "fa-brands-400.ttf", nullptr);
 
+  const bool have_solid  = solid  && g_file_test(solid,  G_FILE_TEST_IS_REGULAR);
+  const bool have_brands = brands && g_file_test(brands, G_FILE_TEST_IS_REGULAR);
+  g_free(solid);
+  g_free(brands);
+
+  if (!have_solid || !have_brands) {
+    std::cerr << "FontRegistry: missing FA font files in: " << dir << "\n";
+    return false;
+  }
+
+  // ---- Path A: PangoFc backend (Fontconfig/FreeType) ----
+#if SV_HAVE_PANGO_FC
+  {
+    // Ensure fontconfig is initialized using whatever FONTCONFIG_FILE/PATH points at
+    FcConfig* cfg = FcInitLoadConfigAndFonts();
+    if (!cfg) {
+      std::cerr << "FontRegistry: FcInitLoadConfigAndFonts failed\n";
+      // fall through to Win32 private-font install if available
+    } else {
 #ifdef _WIN32
-  int added = 0;
+      // Fontconfig behaves better with forward slashes on Windows
+      std::string norm = dir;
+      for (auto& ch : norm) if (ch == '\\') ch = '/';
+      const FcBool ok = FcConfigAppFontAddDir(cfg, reinterpret_cast<const FcChar8*>(norm.c_str()));
+#else
+      const FcBool ok = FcConfigAppFontAddDir(cfg, reinterpret_cast<const FcChar8*>(dir.c_str()));
+#endif
+      if (!ok) {
+        std::cerr << "FontRegistry: FcConfigAppFontAddDir failed for: " << dir << "\n";
+      } else {
+        // Rebuild font sets
+        FcConfigBuildFonts(cfg);
 
-  for (const auto& it : std::filesystem::directory_iterator(fontDir)) {
-    if (!it.is_regular_file()) continue;
+        // Attach config to the *actual* Pango font map, so it sees app fonts.
+        PangoFontMap* fm = pango_cairo_font_map_get_default();
+        if (fm && PANGO_IS_FC_FONT_MAP(fm)) {
+          pango_fc_font_map_set_config(PANGO_FC_FONT_MAP(fm), cfg);
+          pango_fc_font_map_cache_clear(PANGO_FC_FONT_MAP(fm));
+          pango_font_map_changed(fm);
+          return true;
+        }
 
-    auto ext = it.path().extension().wstring();
-    if (_wcsicmp(ext.c_str(), L".ttf") != 0 && _wcsicmp(ext.c_str(), L".otf") != 0)
-      continue;
-
-    const std::wstring wpath = it.path().wstring();
-
-    // Install privately for this process only (no admin, no system install)
-    if (AddFontResourceExW(wpath.c_str(), FR_PRIVATE, nullptr) > 0) {
-      ++added;
+        // If we’re here: Pango is not using Fc backend; fall through to Win32 path.
+      }
     }
   }
+#endif // SV_HAVE_PANGO_FC
 
-  if (added > 0) {
-    // Force GDI/PangoWin32 to refresh font list
-    SendMessageW(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
-    return true;
+  // ---- Path B: Windows Win32 backend (GDI) ----
+#ifdef _WIN32
+  {
+    // Private per-process font install (no admin, no system install).
+    int added = 0;
+
+    GDir* gd = g_dir_open(dir.c_str(), 0, nullptr);
+    if (!gd) {
+      std::cerr << "FontRegistry: g_dir_open failed for: " << dir << "\n";
+      return false;
+    }
+
+    for (const char* name = g_dir_read_name(gd); name; name = g_dir_read_name(gd)) {
+      // crude suffix test (case-insensitive enough for our shipped filenames)
+      if (!g_str_has_suffix(name, ".ttf") && !g_str_has_suffix(name, ".TTF") &&
+          !g_str_has_suffix(name, ".otf") && !g_str_has_suffix(name, ".OTF")) {
+        continue;
+      }
+
+      char* full = g_build_filename(dir.c_str(), name, nullptr);
+      if (!full) continue;
+
+      if (g_file_test(full, G_FILE_TEST_IS_REGULAR)) {
+        gunichar2* w = g_utf8_to_utf16(full, -1, nullptr, nullptr, nullptr);
+        if (w) {
+          if (AddFontResourceExW(reinterpret_cast<const wchar_t*>(w), FR_PRIVATE, nullptr) > 0) {
+            ++added;
+          }
+          g_free(w);
+        }
+      }
+
+      g_free(full);
+    }
+
+    g_dir_close(gd);
+
+    if (added > 0) {
+      // Let GDI/PangoWin32 refresh font list
+      SendMessageW(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
+      return true;
+    }
+
+    std::cerr << "FontRegistry: AddFontResourceExW added 0 fonts from: " << dir << "\n";
+    return false;
   }
-  return false;
-
 #else
-  // Your existing Linux/fontconfig path here
   return false;
 #endif
 }
