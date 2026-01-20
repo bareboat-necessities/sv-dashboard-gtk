@@ -153,13 +153,13 @@ jobs:
           
           # Copy dependent DLLs (app + gdbus)
           copy_deps () {
-          local bin="$1"
-          if [ -f "$bin" ]; then
-          for d in $(ldd "$bin" | awk '{print $3}' | grep -E "^/mingw64/bin/.*\.dll$" | sort -u); do
-          cp -f "$d" dist/
-          done
-          fi
-        }
+            local bin="$1"
+            if [ -f "$bin" ]; then
+            for d in $(ldd "$bin" | awk '{print $3}' | grep -E "^/mingw64/bin/.*\.dll$" | sort -u); do
+            cp -f "$d" dist/
+            done
+            fi
+          }
           copy_deps build/sv-dashboard.exe
           copy_deps /mingw64/bin/gdbus.exe
           
