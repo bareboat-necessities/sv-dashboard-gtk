@@ -54,7 +54,7 @@ void DesktopIcon::apply_fonts(const IconSpec& spec) {
     fa.set_weight(Pango::WEIGHT_NORMAL);
   } else {
     fa.set_family(FontRegistry::kFamilyFree);
-    fa.set_weight(Pango::WEIGHT_NORMAL); // 900-ish
+    fa.set_weight(Pango::WEIGHT_HEAVY); // 900-ish
   }
   fa.set_size(ICON_PX * Pango::SCALE);
   icon_.override_font(fa);
