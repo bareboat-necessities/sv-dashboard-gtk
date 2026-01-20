@@ -13,6 +13,38 @@
 
 using namespace std;
 
+#ifdef _WIN32
+static std::string windowsDirUtf8() {
+  wchar_t wwin[MAX_PATH];
+  UINT n = GetWindowsDirectoryW(wwin, MAX_PATH);
+  if (n == 0 || n >= MAX_PATH) return "C:\\Windows";
+  std::filesystem::path p = std::filesystem::path(utf8_from_wide(wwin));
+  return p.u8string(); // keep backslashes
+}
+
+static void writeTextFile(const std::string& path, const std::string& text) {
+  std::error_code ec;
+  std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
+  FILE* f = nullptr;
+  if (fopen_s(&f, path.c_str(), "wb") == 0 && f) {
+    fwrite(text.data(), 1, text.size(), f);
+    fclose(f);
+  }
+}
+
+static bool canWriteHere(const std::string& dir) {
+  std::error_code ec;
+  std::filesystem::create_directories(dir, ec);
+  auto test = std::filesystem::path(dir) / ".__writetest";
+  FILE* f = nullptr;
+  if (fopen_s(&f, test.u8string().c_str(), "wb") != 0 || !f) return false;
+  fputs("ok", f);
+  fclose(f);
+  std::filesystem::remove(test, ec);
+  return true;
+}
+#endif
+
 static string utf8_from_wide(const wchar_t* w) {
 #ifdef _WIN32
   if (!w) return {};
@@ -74,21 +106,22 @@ void RuntimeEnv::setup() {
   const string root = exeDir(); // where sv-dashboard.exe lives
 
 #ifdef _WIN32
-  // Put our folder first in PATH so GLib doesn't pick up Cygwin's gdbus.exe, etc.
-  const char* oldPath = getenv("PATH");
-  string newPath = root + ";" + (oldPath ? string(oldPath) : string());
-  setEnv("PATH", newPath);
+  // Keep PATH clean / prefer our bundled tools & DLLs
+  const char* oldPath = std::getenv("PATH");
+  setEnv("PATH", root + ";" + (oldPath ? std::string(oldPath) : std::string()));
 
-  // Use a guaranteed-writable per-user cache directory for fontconfig
-  const string appBase = localAppDataDir() + "/sv-dashboard-gtk";
-  const string cacheHome = appBase + "/cache";
-  const string fcCache = cacheHome + "/fontconfig";
-  ensureDir(fcCache);
+  // Writable per-user base (works even if EXE is run from inside a zip)
+  const std::string appBase   = localAppDataDir() + "/sv-dashboard-gtk";
+  const std::string cacheHome = appBase + "/cache";
+  ensureDir(cacheHome);                 // .../cache
+  ensureDir(cacheHome + "/fontconfig"); // .../cache/fontconfig (optional but nice)
 
-  setEnv("HOME", appBase);                 // harmless; helps some stacks
-  setEnv("XDG_CACHE_HOME", cacheHome);     // fontconfig cachedir prefix="xdg" uses this :contentReference[oaicite:3]{index=3}
+  setEnv("XDG_CACHE_HOME", cacheHome);
 
-  // Point to our bundled fontconfig config
+  // Optional: helps some stacks, harmless
+  setEnv("HOME", appBase);
+
+  // Point fontconfig at our bundled config
   setEnv("FONTCONFIG_PATH", root + "/etc/fonts");
   setEnv("FONTCONFIG_FILE", root + "/etc/fonts/fonts.conf");
 
