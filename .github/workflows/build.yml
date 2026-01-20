@@ -63,14 +63,15 @@ jobs:
           msystem: MINGW64
           update: true
           install: >-
-            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-pkgconf
             mingw-w64-x86_64-gtkmm3
             mingw-w64-x86_64-meson
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-fontconfig
             mingw-w64-x86_64-curl
-            mingw-w64-x86_64-unzip
             mingw-w64-x86_64-python
+            unzip
             p7zip
             git
 
@@ -96,15 +97,12 @@ jobs:
           rm -rf dist sv-dashboard-windows-x64.zip
           mkdir -p dist/share dist/lib
 
-          # Put exe at root so Windows DLL search finds bundled DLLs
           cp -f build/sv-dashboard.exe dist/sv-dashboard.exe
 
-          # Bundle FA fonts
           mkdir -p dist/share/sv-dashboard-gtk/fonts
           cp -f assets/fonts/*.ttf dist/share/sv-dashboard-gtk/fonts/
 
           # Copy dependent DLLs next to exe
-          # Filter to mingw64 DLL paths and ignore system ones
           for d in $(ldd build/sv-dashboard.exe | awk '{print $3}' | grep -E "^/mingw64/bin/.*\.dll$" | sort -u); do
             cp -f "$d" dist/
           done
@@ -119,14 +117,7 @@ jobs:
           cp -r /mingw64/lib/gdk-pixbuf-2.0/2.10.0/loaders/* dist/lib/gdk-pixbuf-2.0/2.10.0/loaders/
           /mingw64/bin/gdk-pixbuf-query-loaders > dist/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache
 
-          # OPTIONAL but commonly needed by GTK apps: icon theme + glib runtime data
-          # (GTK may still run without these, but some widgets/icons may not)
-          mkdir -p dist/share/icons
-          if [ -d /mingw64/share/icons ]; then
-            cp -r /mingw64/share/icons/* dist/share/icons/ || true
-          fi
-
-          # Create run.bat (sets runtime env and starts the app)
+          # Create run.bat
           cat > dist/run.bat <<'EOF'
           @echo off
           setlocal
@@ -139,7 +130,6 @@ jobs:
           endlocal
           EOF
 
-          # Zip it
           7z a sv-dashboard-windows-x64.zip ./dist/*
 
       - name: Upload artifact
