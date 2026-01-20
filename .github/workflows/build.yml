@@ -198,6 +198,19 @@ jobs:
           
           # Fontconfig config (required for portable fontconfig usage)
           cp -r /mingw64/etc/fonts dist/etc/
+
+          # Fix fontconfig cache dirs for Windows portable
+          # Remove /var/cache/fontconfig (usually not writable on Windows)
+          sed -i 's@<cachedir>/var/cache/fontconfig</cachedir>@@g' dist/etc/fonts/fonts.conf
+
+          # Prepend our writable cache dir rule (must be early in conf.d order)
+          mkdir -p dist/etc/fonts/conf.d
+          cp -f assets/windows/fontconfig/00-sv-dashboard-cache.conf dist/etc/fonts/conf.d/00-sv-dashboard-cache.conf
+          
+          # Ensure we have an XDG cache dir entry (writable if XDG_CACHE_HOME is set)
+          if ! grep -q 'cachedir prefix="xdg"' dist/etc/fonts/fonts.conf; then
+            sed -i 's@</fontconfig>@  <cachedir prefix="xdg">fontconfig</cachedir>\n</fontconfig>@' dist/etc/fonts/fonts.conf
+          fi
           
           # Create run.bat (adds HOME + XDG_CACHE_HOME to fix cache errors)
           cat > dist/run.bat <<'EOF'
