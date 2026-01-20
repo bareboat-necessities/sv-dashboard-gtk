@@ -4,7 +4,9 @@
 #include <filesystem>
 
 #ifdef _WIN32
-  #define NOMINMAX
+  #ifndef NOMINMAX
+    #define NOMINMAX
+  #endif
   #include <windows.h>
   #include <shlobj.h>
 #endif
@@ -50,7 +52,7 @@ string RuntimeEnv::exeDir() {
   DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
   if (n == 0 || n >= MAX_PATH) return ".";
   std::filesystem::path p = std::filesystem::path(utf8_from_wide(buf)).parent_path();
-  return toForwardSlashes(p.u8string());
+  return toForwardSlashes(p.generic_string());  // returns std::string with '/' separators
 #else
   // Linux/macOS: keep your existing implementation
   return ".";
