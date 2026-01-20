@@ -5,26 +5,13 @@ on:
   pull_request:
 
 jobs:
-  build:
+  build-amd64:
+    name: build (amd64)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [amd64, arm64]
-
     steps:
       - uses: actions/checkout@v4
 
-      # Needed to run linux/arm64 containers on an amd64 runner
-      - name: Set up QEMU
-        if: matrix.arch == 'arm64'
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
-      # ---- amd64 build (native) ----
-      - name: Install deps (amd64)
-        if: matrix.arch == 'amd64'
+      - name: Install deps
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -32,41 +19,50 @@ jobs:
             libgtkmm-3.0-dev libfontconfig1-dev \
             curl unzip python3
 
-      - name: Fetch Font Awesome (amd64)
-        if: matrix.arch == 'amd64'
+      - name: Fetch Font Awesome (Free)
         run: |
           chmod +x scripts/fetch-fontawesome.sh
           ./scripts/fetch-fontawesome.sh
 
-      - name: Configure (amd64)
-        if: matrix.arch == 'amd64'
-        run: meson setup build-amd64
+      - name: Configure
+        run: meson setup build
 
-      - name: Build (amd64)
-        if: matrix.arch == 'amd64'
-        run: meson compile -C build-amd64
-
-      # ---- arm64 build (Debian container via QEMU) ----
-      - name: Build in Debian arm64 container
-        if: matrix.arch == 'arm64'
-        run: |
-          docker run --rm --platform linux/arm64 \
-            -v "${{ github.workspace }}:/work" \
-            -w /work \
-            debian:bookworm \
-            bash -lc '
-              apt-get update && apt-get install -y \
-                g++ meson ninja-build pkg-config \
-                libgtkmm-3.0-dev libfontconfig1-dev \
-                curl unzip python3
-              chmod +x scripts/fetch-fontawesome.sh
-              ./scripts/fetch-fontawesome.sh
-              meson setup build-arm64
-              meson compile -C build-arm64
-            '
+      - name: Build
+        run: meson compile -C build
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sv-dashboard-${{ matrix.arch }}
-          path: build-${{ matrix.arch }}/sv-dashboard
+          name: sv-dashboard-amd64
+          path: build/sv-dashboard
+
+  build-arm64:
+    name: build (arm64)
+    runs-on: ubuntu-24.04-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            meson ninja-build pkg-config \
+            libgtkmm-3.0-dev libfontconfig1-dev \
+            curl unzip python3
+
+      - name: Fetch Font Awesome (Free)
+        run: |
+          chmod +x scripts/fetch-fontawesome.sh
+          ./scripts/fetch-fontawesome.sh
+
+      - name: Configure
+        run: meson setup build
+
+      - name: Build
+        run: meson compile -C build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sv-dashboard-arm64
+          path: build/sv-dashboard
