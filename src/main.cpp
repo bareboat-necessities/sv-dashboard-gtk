@@ -1,5 +1,6 @@
 #include "MainApp.h"
 #include "FontRegistry.h"
+#include "RuntimeEnv.h"
 #include <glib.h>
 #include <iostream>
 
