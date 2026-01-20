@@ -6,6 +6,8 @@
 #include <iostream>
 
 int main(int argc, char** argv) {
+  RuntimeEnv::setup(); // MUST run before Gtk::Application::create() / any Pango usage
+
 #ifdef _WIN32
   // Don’t let GLib try to talk to / autolaunch D-Bus on Windows.
   // Only set if user hasn't explicitly set it.
@@ -27,8 +29,6 @@ int main(int argc, char** argv) {
     g_unsetenv(vars_to_clear[i]);
   }
 #endif
-
-  RuntimeEnv::setup(); // MUST run before Gtk::Application::create() / any Pango usage
 
   FontRegistry reg;
   if (!reg.registerBundledFonts()) {
