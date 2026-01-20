@@ -101,52 +101,53 @@ bool FontRegistry::registerBundledFonts() {
   if (dir.empty()) {
     std::cerr
       << "FontRegistry: could not locate bundled font directory.\n"
-      << "Run ./scripts/fetch-fontawesome.sh or install to /usr/share/sv-dashboard-gtk/fonts\n";
+      << "Run ./scripts/fetch-fontawesome.sh or bundle fonts with the app.\n";
     return false;
   }
 
+  // Sanity check: required files exist (but we register the whole dir)
   char* solid  = g_build_filename(dir.c_str(), "fa-solid-900.ttf", nullptr);
   char* brands = g_build_filename(dir.c_str(), "fa-brands-400.ttf", nullptr);
 
   const bool have_solid  = solid  && g_file_test(solid,  G_FILE_TEST_IS_REGULAR);
   const bool have_brands = brands && g_file_test(brands, G_FILE_TEST_IS_REGULAR);
-
-  if (!have_solid || !have_brands) {
-    std::cerr << "FontRegistry: missing required font files in " << dir << "\n";
-    if (solid)  std::cerr << "  expected: " << solid  << "\n";
-    if (brands) std::cerr << "  expected: " << brands << "\n";
-    g_free(solid);
-    g_free(brands);
-    return false;
-  }
-
-  if (!FcInit()) {
-    std::cerr << "FontRegistry: FcInit failed\n";
-    g_free(solid);
-    g_free(brands);
-    return false;
-  }
-
-  FcConfig* cfg = FcConfigGetCurrent();
-  if (!cfg) {
-    std::cerr << "FontRegistry: FcConfigGetCurrent failed\n";
-    g_free(solid);
-    g_free(brands);
-    return false;
-  }
-
-  const FcBool ok1 = FcConfigAppFontAddFile(cfg, reinterpret_cast<const FcChar8*>(solid));
-  const FcBool ok2 = FcConfigAppFontAddFile(cfg, reinterpret_cast<const FcChar8*>(brands));
-
-  FcConfigBuildFonts(cfg);
-
   g_free(solid);
   g_free(brands);
 
-  if (!ok1 || !ok2) {
-    std::cerr << "FontRegistry: failed adding one or more fonts via fontconfig\n";
+  if (!have_solid || !have_brands) {
+    std::cerr << "FontRegistry: missing FA font files in: " << dir << "\n";
     return false;
   }
 
+  // Create an app-local fontconfig config (no reliance on system fonts.conf)
+  FcConfig* cfg = FcConfigCreate();
+  if (!cfg) {
+    std::cerr << "FontRegistry: FcConfigCreate failed\n";
+    return false;
+  }
+
+#ifdef _WIN32
+  // Fontconfig likes forward slashes. Normalize minimal.
+  std::string norm = dir;
+  for (auto& ch : norm) if (ch == '\\') ch = '/';
+  const FcBool ok = FcConfigAppFontAddDir(cfg, reinterpret_cast<const FcChar8*>(norm.c_str()));
+#else
+  const FcBool ok = FcConfigAppFontAddDir(cfg, reinterpret_cast<const FcChar8*>(dir.c_str()));
+#endif
+
+  if (!ok) {
+    std::cerr << "FontRegistry: FcConfigAppFontAddDir failed for: " << dir << "\n";
+    FcConfigDestroy(cfg);
+    return false;
+  }
+
+  // Make this config current for the process
+  if (!FcConfigSetCurrent(cfg)) {
+    std::cerr << "FontRegistry: FcConfigSetCurrent failed\n";
+    FcConfigDestroy(cfg);
+    return false;
+  }
+
+  FcConfigBuildFonts(cfg);
   return true;
 }
