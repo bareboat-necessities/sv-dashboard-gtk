@@ -16,12 +16,14 @@
   #define SV_HAVE_PANGO_FC 0
 #endif
 
+#include <cairo.h>
+
 #ifdef _WIN32
   #include <windows.h>
-  #include <cairo.h>
 #else
   #include <unistd.h>
 #endif
+
 
 void FontRegistry::setFontDirOverride(std::string dir) {
   font_dir_override_ = std::move(dir);
@@ -131,31 +133,34 @@ bool FontRegistry::registerBundledFonts() {
     return false;
   }
 
+#ifdef _WIN32
+  // Force a Fontconfig/FreeType-backed PangoCairo fontmap as the default.
+  // Must happen before we touch pango_cairo_font_map_get_default().
+  {
+    PangoFontMap* ft_map = pango_cairo_font_map_new_for_font_type(CAIRO_FONT_TYPE_FT);
+    if (ft_map) {
+      pango_cairo_font_map_set_default(PANGO_CAIRO_FONT_MAP(ft_map));
+      g_object_unref(ft_map);
+    }
+  }
+#endif
+
   // ---- Path A: PangoFc backend (Fontconfig/FreeType) ----
 #if SV_HAVE_PANGO_FC
   {
-    // Load normal config (so cachedirs exist), then add app font dir.
     FcConfig* cfg = FcInitLoadConfigAndFonts();
     if (cfg) {
 #ifdef _WIN32
       std::string norm = dir;
       for (auto& ch : norm) if (ch == '\\') ch = '/';
       const FcBool ok = FcConfigAppFontAddDir(cfg, reinterpret_cast<const FcChar8*>(norm.c_str()));
-
-      // Force a Fontconfig/FreeType-backed PangoCairo fontmap for this thread.
-      // Equivalent to PANGOCAIRO_BACKEND=fc, but programmatic and harder to “lose”.
-      PangoFontMap* ft_map = pango_cairo_font_map_new_for_font_type(CAIRO_FONT_TYPE_FT);
-      if (ft_map) {
-        pango_cairo_font_map_set_default(PANGO_CAIRO_FONT_MAP(ft_map));
-        g_object_unref(ft_map); // default holds its own ref
-      }
 #else
       const FcBool ok = FcConfigAppFontAddDir(cfg, reinterpret_cast<const FcChar8*>(dir.c_str()));
 #endif
       if (ok) {
         FcConfigBuildFonts(cfg);
 
-        // Attach to Pango font map so Pango actually sees the config.
+        // Attach config to the *actual* Pango font map.
         PangoFontMap* fm = pango_cairo_font_map_get_default();
         if (fm && PANGO_IS_FC_FONT_MAP(fm)) {
           pango_fc_font_map_set_config(PANGO_FC_FONT_MAP(fm), cfg);
@@ -163,10 +168,22 @@ bool FontRegistry::registerBundledFonts() {
           pango_font_map_changed(fm);
           return true;
         }
+
+        // If we forced FT map on Windows and still didn't get Fc font map, log it.
+        if (fm) {
+          std::cerr << "FontRegistry: default Pango font map is not PangoFc: "
+                    << G_OBJECT_TYPE_NAME(fm) << "\n";
+        } else {
+          std::cerr << "FontRegistry: pango_cairo_font_map_get_default() returned null\n";
+        }
+      } else {
+        std::cerr << "FontRegistry: FcConfigAppFontAddDir failed for: " << dir << "\n";
       }
+    } else {
+      std::cerr << "FontRegistry: FcInitLoadConfigAndFonts failed\n";
     }
   }
-#endif
+#endif // SV_HAVE_PANGO_FC
 
   // ---- Path B: Windows pangowin32 backend (GDI) ----
 #ifdef _WIN32
@@ -214,4 +231,3 @@ bool FontRegistry::registerBundledFonts() {
   return false;
 #endif
 }
-
