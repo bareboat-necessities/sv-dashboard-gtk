@@ -74,14 +74,21 @@ string RuntimeEnv::exeDir() {
 #ifdef _WIN32
 string RuntimeEnv::localAppDataDir() {
   PWSTR wpath = nullptr;
-  if (FAILED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &wpath)) || !wpath)
+
+  // KF_FLAG_CREATE makes sure the folder exists
+  HRESULT hr = SHGetKnownFolderPath(FOLDERID_LocalAppData, KF_FLAG_CREATE, nullptr, &wpath);
+  if (FAILED(hr) || !wpath) {
+    // Fallback to env var if shell call fails for any reason
+    if (const char* la = getenv("LOCALAPPDATA")) return toForwardSlashes(la);
     return exeDir();
+  }
 
   string out = toForwardSlashes(utf8_from_wide(wpath));
   CoTaskMemFree(wpath);
   return out;
 }
 #endif
+
 
 void RuntimeEnv::setup() {
 #ifdef _WIN32
@@ -96,20 +103,20 @@ void RuntimeEnv::setup() {
   // Writable per-user base
   const string appBase   = localAppDataDir() + "/sv-dashboard-gtk";
   const string cacheHome = appBase + "/cache";
-  const string fcCache   = cacheHome + "/fontconfig";
 
-  ensureDir(appBase);
   ensureDir(cacheHome);
-  ensureDir(fcCache);
+  ensureDir(cacheHome + "/fontconfig");
+
+  setEnv("HOME", appBase);
+  setEnv("XDG_CACHE_HOME", cacheHome);
 
   // Some configs still probe these legacy locations (safe to create)
   ensureDir(appBase + "/.cache/fontconfig");
   ensureDir(appBase + "/.fontconfig");
 
-  // Make fontconfig pick a writable cache directory (hard override)
-  setEnv("HOME", appBase);
-  setEnv("XDG_CACHE_HOME", cacheHome);
-  setEnv("FC_CACHEDIR", fcCache);
+  // Many Windows fontconfig builds respect this (even if not always documented).
+  // If ignored, harmless; if respected, it hard-pins the cache dir.
+  setEnv("FC_CACHEDIR", cacheHome + "/fontconfig");
 
   // Fontconfig: read-only config, writable cache
   setEnv("FONTCONFIG_PATH", root + "/etc/fonts");
