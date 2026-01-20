@@ -95,10 +95,12 @@ jobs:
         shell: msys2 {0}
         run: |
           rm -rf dist sv-dashboard-windows-x64.zip
-          mkdir -p dist/share dist/lib
+          mkdir -p dist/share dist/lib dist/etc dist/var/cache
 
+          # Put exe at root so Windows DLL search finds bundled DLLs
           cp -f build/sv-dashboard.exe dist/sv-dashboard.exe
 
+          # Bundle FA fonts
           mkdir -p dist/share/sv-dashboard-gtk/fonts
           cp -f assets/fonts/*.ttf dist/share/sv-dashboard-gtk/fonts/
 
@@ -106,6 +108,10 @@ jobs:
           for d in $(ldd build/sv-dashboard.exe | awk '{print $3}' | grep -E "^/mingw64/bin/.*\.dll$" | sort -u); do
             cp -f "$d" dist/
           done
+
+          # Ship GLib spawn helpers (important on Windows)
+          cp -f /mingw64/bin/gspawn-win64-helper.exe dist/ || true
+          cp -f /mingw64/bin/gspawn-win64-helper-console.exe dist/ || true
 
           # GLib schemas (GSettings)
           mkdir -p dist/share/glib-2.0/schemas
@@ -117,15 +123,33 @@ jobs:
           cp -r /mingw64/lib/gdk-pixbuf-2.0/2.10.0/loaders/* dist/lib/gdk-pixbuf-2.0/2.10.0/loaders/
           /mingw64/bin/gdk-pixbuf-query-loaders > dist/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache
 
-          # Create run.bat
+          # Fontconfig config (REQUIRED for portable builds using fontconfig)
+          mkdir -p dist/etc
+          cp -r /mingw64/etc/fonts dist/etc/
+
+          # Create run.bat: reset PATH (avoid cygwin), set schema/pixbuf/fontconfig paths
           cat > dist/run.bat <<'EOF'
           @echo off
           setlocal
           set "DIR=%~dp0"
+
+          REM Prefer our portable folder; avoid picking up cygwin tools
+          set "PATH=%DIR%;%SystemRoot%\System32;%SystemRoot%"
+
+          REM Font Awesome bundled fonts
           set "SV_DASHBOARD_FONT_DIR=%DIR%share\sv-dashboard-gtk\fonts"
+
+          REM Fontconfig portable config
+          set "FONTCONFIG_FILE=%DIR%etc\fonts\fonts.conf"
+          set "FONTCONFIG_PATH=%DIR%etc\fonts"
+
+          REM GSettings schemas
           set "GSETTINGS_SCHEMA_DIR=%DIR%share\glib-2.0\schemas"
+
+          REM gdk-pixbuf loaders
           set "GDK_PIXBUF_MODULE_FILE=%DIR%lib\gdk-pixbuf-2.0\2.10.0\loaders.cache"
           set "GDK_PIXBUF_MODULEDIR=%DIR%lib\gdk-pixbuf-2.0\2.10.0\loaders"
+
           "%DIR%sv-dashboard.exe"
           endlocal
           EOF
