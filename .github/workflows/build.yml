@@ -2,57 +2,101 @@ name: build
 
 on:
   push:
+    branches: ["**"]
+    tags: ["v*"]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # This gives a stable label for artifacts:
+  # - tag builds use the tag name (v0.2.0)
+  # - other builds use sha-<7 chars>
+  ARTIFACT_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('sha-{0}', github.sha) }}
 
 jobs:
-  build-amd64:
+  linux-amd64:
+    name: linux (amd64)
     runs-on: ubuntu-latest
-    container: debian:bookworm
     steps:
       - uses: actions/checkout@v4
+
       - name: Install deps
         run: |
-          apt-get update
-          apt-get install -y g++ meson ninja-build pkg-config \
-            libgtkmm-3.0-dev libfontconfig1-dev curl unzip python3
-      - name: Fetch Font Awesome
+          sudo apt-get update
+          sudo apt-get install -y \
+            meson ninja-build pkg-config \
+            libgtkmm-3.0-dev libfontconfig1-dev \
+            curl unzip python3
+
+      - name: Fetch Font Awesome (Free)
         run: |
           chmod +x scripts/fetch-fontawesome.sh
           ./scripts/fetch-fontawesome.sh
-      - name: Build
-        run: |
-          meson setup build
-          meson compile -C build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sv-dashboard-amd64
-          path: build/sv-dashboard
 
-  build-arm64:
+      - name: Build (release)
+        run: |
+          meson setup build --buildtype=release
+          meson compile -C build
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist/share/sv-dashboard-gtk/fonts
+          cp -f build/sv-dashboard dist/
+          cp -f assets/fonts/*.ttf dist/share/sv-dashboard-gtk/fonts/
+          tar -czf sv-dashboard-${{ env.ARTIFACT_TAG }}-linux-amd64.tar.gz -C dist .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64
+          path: sv-dashboard-${{ env.ARTIFACT_TAG }}-linux-amd64.tar.gz
+
+  linux-arm64:
+    name: linux (arm64)
     runs-on: ubuntu-24.04-arm
-    container: debian:bookworm
     steps:
       - uses: actions/checkout@v4
+
       - name: Install deps
         run: |
-          apt-get update
-          apt-get install -y g++ meson ninja-build pkg-config \
-            libgtkmm-3.0-dev libfontconfig1-dev curl unzip python3
-      - name: Fetch Font Awesome
+          sudo apt-get update
+          sudo apt-get install -y \
+            meson ninja-build pkg-config \
+            libgtkmm-3.0-dev libfontconfig1-dev \
+            curl unzip python3
+
+      - name: Fetch Font Awesome (Free)
         run: |
           chmod +x scripts/fetch-fontawesome.sh
           ./scripts/fetch-fontawesome.sh
-      - name: Build
-        run: |
-          meson setup build
-          meson compile -C build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sv-dashboard-arm64
-          path: build/sv-dashboard
 
-  build-windows:
-    name: build (windows x64)
+      - name: Build (release)
+        run: |
+          meson setup build --buildtype=release
+          meson compile -C build
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist/share/sv-dashboard-gtk/fonts
+          cp -f build/sv-dashboard dist/
+          cp -f assets/fonts/*.ttf dist/share/sv-dashboard-gtk/fonts/
+          tar -czf sv-dashboard-${{ env.ARTIFACT_TAG }}-linux-arm64.tar.gz -C dist .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64
+          path: sv-dashboard-${{ env.ARTIFACT_TAG }}-linux-arm64.tar.gz
+
+  windows-x64:
+    name: windows (x64)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -81,26 +125,25 @@ jobs:
           chmod +x scripts/fetch-fontawesome.sh
           ./scripts/fetch-fontawesome.sh
 
-      - name: Configure
+      - name: Configure (release)
         shell: msys2 {0}
         run: |
-          meson setup build
+          meson setup build --buildtype=release
 
       - name: Build
         shell: msys2 {0}
         run: |
           meson compile -C build
 
-      - name: Package portable zip
+      - name: Package portable zip (includes run.bat)
         shell: msys2 {0}
         run: |
+          set -euo pipefail
           rm -rf dist sv-dashboard-windows-x64.zip
-          mkdir -p dist/share dist/lib dist/etc dist/var/cache
+          mkdir -p dist/share dist/lib dist/etc
 
-          # Put exe at root so Windows DLL search finds bundled DLLs
           cp -f build/sv-dashboard.exe dist/sv-dashboard.exe
 
-          # Bundle FA fonts
           mkdir -p dist/share/sv-dashboard-gtk/fonts
           cp -f assets/fonts/*.ttf dist/share/sv-dashboard-gtk/fonts/
 
@@ -109,7 +152,7 @@ jobs:
             cp -f "$d" dist/
           done
 
-          # Ship GLib spawn helpers (important on Windows)
+          # GLib spawn helpers (recommended on Windows)
           cp -f /mingw64/bin/gspawn-win64-helper.exe dist/ || true
           cp -f /mingw64/bin/gspawn-win64-helper-console.exe dist/ || true
 
@@ -123,41 +166,48 @@ jobs:
           cp -r /mingw64/lib/gdk-pixbuf-2.0/2.10.0/loaders/* dist/lib/gdk-pixbuf-2.0/2.10.0/loaders/
           /mingw64/bin/gdk-pixbuf-query-loaders > dist/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache
 
-          # Fontconfig config (REQUIRED for portable builds using fontconfig)
-          mkdir -p dist/etc
+          # Fontconfig config (required for portable fontconfig usage)
           cp -r /mingw64/etc/fonts dist/etc/
 
-          # Create run.bat: reset PATH (avoid cygwin), set schema/pixbuf/fontconfig paths
+          # Create run.bat
           cat > dist/run.bat <<'EOF'
           @echo off
           setlocal
           set "DIR=%~dp0"
-
-          REM Prefer our portable folder; avoid picking up cygwin tools
           set "PATH=%DIR%;%SystemRoot%\System32;%SystemRoot%"
-
-          REM Font Awesome bundled fonts
           set "SV_DASHBOARD_FONT_DIR=%DIR%share\sv-dashboard-gtk\fonts"
-
-          REM Fontconfig portable config
           set "FONTCONFIG_FILE=%DIR%etc\fonts\fonts.conf"
           set "FONTCONFIG_PATH=%DIR%etc\fonts"
-
-          REM GSettings schemas
           set "GSETTINGS_SCHEMA_DIR=%DIR%share\glib-2.0\schemas"
-
-          REM gdk-pixbuf loaders
           set "GDK_PIXBUF_MODULE_FILE=%DIR%lib\gdk-pixbuf-2.0\2.10.0\loaders.cache"
           set "GDK_PIXBUF_MODULEDIR=%DIR%lib\gdk-pixbuf-2.0\2.10.0\loaders"
-
           "%DIR%sv-dashboard.exe"
           endlocal
           EOF
 
-          7z a sv-dashboard-windows-x64.zip ./dist/*
+          7z a sv-dashboard-${{ env.ARTIFACT_TAG }}-windows-x64.zip ./dist/*
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sv-dashboard-windows-x64
-          path: sv-dashboard-windows-x64.zip
+          name: windows-x64
+          path: sv-dashboard-${{ env.ARTIFACT_TAG }}-windows-x64.zip
+
+  publish:
+    name: publish to GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux-amd64, linux-arm64, windows-x64]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/linux-amd64/*.tar.gz
+            release-assets/linux-arm64/*.tar.gz
+            release-assets/windows-x64/*.zip
