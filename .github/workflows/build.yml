@@ -218,7 +218,8 @@ jobs:
           # 4) Add our cache-dir fragment early in conf.d order
           mkdir -p dist/etc/fonts/conf.d
           cp -f assets/windows/fontconfig/00-sv-dashboard-cache.conf dist/etc/fonts/conf.d/00-sv-dashboard-cache.conf
-          
+          cp -f assets/windows/fontconfig/10-fontawesome-alias.conf dist/etc/fonts/conf.d/10-fontawesome-alias.conf
+  
           cat > dist/run.bat <<'EOF'
           @echo off
           setlocal
