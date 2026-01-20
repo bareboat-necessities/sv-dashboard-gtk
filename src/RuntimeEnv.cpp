@@ -1,132 +1,99 @@
 #include "RuntimeEnv.h"
 
-#include <glib.h>
-#include <string>
-#include <vector>
+#include <cstdlib>
+#include <filesystem>
 
 #ifdef _WIN32
+  #define NOMINMAX
   #include <windows.h>
+  #include <shlobj.h>
 #endif
 
-namespace {
+using namespace std;
+
+static string utf8_from_wide(const wchar_t* w) {
+#ifdef _WIN32
+  if (!w) return {};
+  int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+  if (n <= 0) return {};
+  string s;
+  s.resize((size_t)n - 1);
+  WideCharToMultiByte(CP_UTF8, 0, w, -1, s.data(), n, nullptr, nullptr);
+  return s;
+#else
+  (void)w;
+  return {};
+#endif
+}
+
+string RuntimeEnv::toForwardSlashes(string s) {
+  for (char& c : s) if (c == '\\') c = '/';
+  return s;
+}
+
+void RuntimeEnv::ensureDir(const string& path) {
+  std::error_code ec;
+  std::filesystem::create_directories(std::filesystem::path(path), ec);
+}
+
+void RuntimeEnv::setEnv(const char* key, const string& val) {
+#ifdef _WIN32
+  _putenv_s(key, val.c_str());
+#else
+  setenv(key, val.c_str(), 1);
+#endif
+}
+
+string RuntimeEnv::exeDir() {
+#ifdef _WIN32
+  wchar_t buf[MAX_PATH];
+  DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+  if (n == 0 || n >= MAX_PATH) return ".";
+  std::filesystem::path p = std::filesystem::path(utf8_from_wide(buf)).parent_path();
+  return toForwardSlashes(p.u8string());
+#else
+  // Linux/macOS: keep your existing implementation
+  return ".";
+#endif
+}
 
 #ifdef _WIN32
-
-static std::string exe_dir() {
-  wchar_t wpath[MAX_PATH];
-  DWORD n = GetModuleFileNameW(nullptr, wpath, MAX_PATH);
-  if (n == 0 || n >= MAX_PATH) return {};
-
-  // UTF-16 -> UTF-8 using GLib
-  gchar* utf8 = g_utf16_to_utf8(reinterpret_cast<const gunichar2*>(wpath),
-                                -1, nullptr, nullptr, nullptr);
-  if (!utf8) return {};
-
-  gchar* dir_c = g_path_get_dirname(utf8);
-  std::string out = dir_c ? dir_c : "";
-
-  g_free(dir_c);
-  g_free(utf8);
+string RuntimeEnv::localAppDataDir() {
+  PWSTR wpath = nullptr;
+  HRESULT hr = SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &wpath);
+  if (FAILED(hr) || !wpath) return exeDir();
+  string out = toForwardSlashes(utf8_from_wide(wpath));
+  CoTaskMemFree(wpath);
   return out;
 }
-
-static std::string join(std::initializer_list<std::string> parts) {
-  std::vector<const gchar*> v;
-  v.reserve(parts.size() + 1);
-  for (const auto& s : parts) v.push_back(s.c_str());
-  v.push_back(nullptr);
-
-  gchar* p = g_build_filenamev(const_cast<gchar**>(v.data()));
-  std::string out = p ? p : "";
-  g_free(p);
-  return out;
-}
-
-static bool is_dir(const std::string& p) {
-  return !p.empty() && g_file_test(p.c_str(), G_FILE_TEST_IS_DIR);
-}
-static bool is_file(const std::string& p) {
-  return !p.empty() && g_file_test(p.c_str(), G_FILE_TEST_IS_REGULAR);
-}
-
-static void mkdirp(const std::string& p) {
-  if (!p.empty()) g_mkdir_with_parents(p.c_str(), 0700);
-}
-
-static void prepend_path_if(const std::string& dir, const std::string& marker_exe) {
-  // Only touch PATH if we actually ship the marker exe (e.g. gdbus.exe)
-  if (!is_file(marker_exe)) return;
-
-  const char* old = g_getenv("PATH");
-  std::string np = dir;
-  if (old && *old) {
-    np += ";";
-    np += old;
-  }
-  g_setenv("PATH", np.c_str(), TRUE);
-}
-
 #endif
-
-} // namespace
 
 void RuntimeEnv::setup() {
-#ifndef _WIN32
-  return;
-#else
-  const auto ed = exe_dir();
-  if (ed.empty()) return;
+  const string root = exeDir(); // where sv-dashboard.exe lives
 
-  // Detect "portable bundle" by presence of support dirs/files next to EXE
-  const auto fonts_dir   = join({ed, "share", "sv-dashboard-gtk", "fonts"});
-  const auto fc_file     = join({ed, "etc", "fonts", "fonts.conf"});
-  const auto fc_path     = join({ed, "etc", "fonts"});
-  const auto schemas_dir = join({ed, "share", "glib-2.0", "schemas"});
-  const auto pix_cache   = join({ed, "lib", "gdk-pixbuf-2.0", "2.10.0", "loaders.cache"});
-  const auto pix_moddir  = join({ed, "lib", "gdk-pixbuf-2.0", "2.10.0", "loaders"});
-  const auto gdbus_exe   = join({ed, "gdbus.exe"});
+#ifdef _WIN32
+  // Put our folder first in PATH so GLib doesn't pick up Cygwin's gdbus.exe, etc.
+  const char* oldPath = getenv("PATH");
+  string newPath = root + ";" + (oldPath ? string(oldPath) : string());
+  setEnv("PATH", newPath);
 
-  const bool looks_portable =
-      is_dir(fonts_dir) || is_file(fc_file) || is_dir(schemas_dir) || is_file(pix_cache);
+  // Use a guaranteed-writable per-user cache directory for fontconfig
+  const string appBase = localAppDataDir() + "/sv-dashboard-gtk";
+  const string cacheHome = appBase + "/cache";
+  const string fcCache = cacheHome + "/fontconfig";
+  ensureDir(fcCache);
 
-  if (!looks_portable) return;
+  setEnv("HOME", appBase);                 // harmless; helps some stacks
+  setEnv("XDG_CACHE_HOME", cacheHome);     // fontconfig cachedir prefix="xdg" uses this :contentReference[oaicite:3]{index=3}
 
-  // Ensure our bundled gdbus.exe wins over cygwin/git-bash ones by PATH precedence.
-  // (GIO searches for gdbus.exe; recommended to ship it next to GIO DLLs) :contentReference[oaicite:2]{index=2}
-  prepend_path_if(ed, gdbus_exe);
+  // Point to our bundled fontconfig config
+  setEnv("FONTCONFIG_PATH", root + "/etc/fonts");
+  setEnv("FONTCONFIG_FILE", root + "/etc/fonts/fonts.conf");
 
-  // Ensure HOME is set (some Windows environments don’t have it)
-  if (!g_getenv("HOME")) {
-    const char* home = g_get_home_dir();
-    if (home && *home) g_setenv("HOME", home, TRUE);
-  }
-
-  // Ensure a writable cache dir for fontconfig:
-  // default cache is under $XDG_CACHE_HOME/fontconfig :contentReference[oaicite:3]{index=3}
-  if (!g_getenv("XDG_CACHE_HOME")) {
-    const char* ucd = g_get_user_cache_dir(); // usually %LOCALAPPDATA%\... on Windows
-    if (ucd && *ucd) {
-      gchar* p = g_build_filename(ucd, "sv-dashboard-gtk", nullptr);
-      std::string xdg = p ? p : "";
-      g_free(p);
-
-      if (!xdg.empty()) {
-        mkdirp(xdg);
-        mkdirp(join({xdg, "fontconfig"}));
-        g_setenv("XDG_CACHE_HOME", xdg.c_str(), TRUE);
-      }
-    }
-  }
-
-  // Point GTK stack to bundled data/config
-  if (is_dir(fonts_dir))   g_setenv("SV_DASHBOARD_FONT_DIR", fonts_dir.c_str(), TRUE);
-
-  // FONTCONFIG_FILE / FONTCONFIG_PATH are documented env vars :contentReference[oaicite:4]{index=4}
-  if (is_file(fc_file))    g_setenv("FONTCONFIG_FILE", fc_file.c_str(), TRUE);
-  if (is_dir(fc_path))     g_setenv("FONTCONFIG_PATH", fc_path.c_str(), TRUE);
-
-  if (is_dir(schemas_dir)) g_setenv("GSETTINGS_SCHEMA_DIR", schemas_dir.c_str(), TRUE);
-  if (is_file(pix_cache))  g_setenv("GDK_PIXBUF_MODULE_FILE", pix_cache.c_str(), TRUE);
-  if (is_dir(pix_moddir))  g_setenv("GDK_PIXBUF_MODULEDIR", pix_moddir.c_str(), TRUE);
+  // App resource locations
+  setEnv("SV_DASHBOARD_FONT_DIR", root + "/share/sv-dashboard-gtk/fonts");
+  setEnv("GSETTINGS_SCHEMA_DIR", root + "/share/glib-2.0/schemas");
+  setEnv("GDK_PIXBUF_MODULEDIR", root + "/lib/gdk-pixbuf-2.0/2.10.0/loaders");
+  setEnv("GDK_PIXBUF_MODULE_FILE", root + "/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache");
 #endif
 }

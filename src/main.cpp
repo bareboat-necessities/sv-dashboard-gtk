@@ -1,20 +1,34 @@
 #include "MainApp.h"
 #include "FontRegistry.h"
 #include "RuntimeEnv.h"
+
 #include <glib.h>
 #include <iostream>
 
 int main(int argc, char** argv) {
 #ifdef _WIN32
-  // Avoid GLib trying to autolaunch a D-Bus session bus on Windows.
-  g_setenv("GSETTINGS_BACKEND", "memory", TRUE);
+  // Don’t let GLib try to talk to / autolaunch D-Bus on Windows.
+  // Only set if user hasn't explicitly set it.
+  if (!g_getenv("GSETTINGS_BACKEND")) {
+    g_setenv("GSETTINGS_BACKEND", "memory", TRUE);
+  }
 
-  // If user runs from Cygwin/MSYS shells with weird fontconfig vars, ignore them.
-  g_unsetenv("FONTCONFIG_FILE");
-  g_unsetenv("FONTCONFIG_PATH");
+  // If user runs from Cygwin/MSYS shells with conflicting env, ignore them.
+  // RuntimeEnv::setup() will set correct bundle values.
+  const char* vars_to_clear[] = {
+      "FONTCONFIG_FILE",
+      "FONTCONFIG_PATH",
+      "FC_CACHEDIR",
+      "XDG_CACHE_HOME",
+      "HOME",
+      nullptr
+  };
+  for (int i = 0; vars_to_clear[i]; ++i) {
+    g_unsetenv(vars_to_clear[i]);
+  }
 #endif
 
-  RuntimeEnv::setup(); // must run before Gtk::Application::create()
+  RuntimeEnv::setup(); // MUST run before Gtk::Application::create() / any Pango usage
 
   FontRegistry reg;
   if (!reg.registerBundledFonts()) {

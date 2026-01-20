@@ -224,6 +224,7 @@ jobs:
           rem --- Make fontconfig happy (writable cache) ---
           set "HOME=%DIR%home"
           set "XDG_CACHE_HOME=%DIR%var\cache"
+          mkdir "%XDG_CACHE_HOME%\fontconfig" 2>nul
           
           rem --- App/bundle paths ---
           set "SV_DASHBOARD_FONT_DIR=%DIR%share\sv-dashboard-gtk\fonts"
