@@ -2,15 +2,37 @@
 
 #include <fontconfig/fontconfig.h>
 #include <glib.h>
-#include <unistd.h>
 
 #include <iostream>
+
+#ifdef _WIN32
+  #include <windows.h>
+#else
+  #include <unistd.h>
+#endif
 
 void FontRegistry::setFontDirOverride(std::string dir) {
   font_dir_override_ = std::move(dir);
 }
 
 std::string FontRegistry::exeDir() {
+#ifdef _WIN32
+  wchar_t wpath[MAX_PATH];
+  DWORD n = GetModuleFileNameW(nullptr, wpath, MAX_PATH);
+  if (n == 0 || n >= MAX_PATH) return {};
+
+  // Convert wide -> UTF-8 using GLib
+  gchar* utf8 = g_utf16_to_utf8(reinterpret_cast<const gunichar2*>(wpath),
+                                -1, nullptr, nullptr, nullptr);
+  if (!utf8) return {};
+
+  char* dir_c = g_path_get_dirname(utf8);
+  std::string out = dir_c ? dir_c : "";
+
+  g_free(dir_c);
+  g_free(utf8);
+  return out;
+#else
   char buf[4096] = {0};
   const ssize_t n = ::readlink("/proc/self/exe", buf, sizeof(buf) - 1);
   if (n <= 0) return {};
@@ -20,6 +42,7 @@ std::string FontRegistry::exeDir() {
   std::string out = d ? d : "";
   g_free(d);
   return out;
+#endif
 }
 
 std::string FontRegistry::findFontDir() const {
