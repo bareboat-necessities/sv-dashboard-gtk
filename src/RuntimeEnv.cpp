@@ -122,6 +122,8 @@ void RuntimeEnv::setup() {
   setEnv("FONTCONFIG_PATH", root + "/etc/fonts");
   setEnv("FONTCONFIG_FILE", root + "/etc/fonts/fonts.conf");
 
+  setEnv("PANGOCAIRO_BACKEND", "fc");
+
   // App resources
   setEnv("SV_DASHBOARD_FONT_DIR", root + "/share/sv-dashboard-gtk/fonts");
   setEnv("GSETTINGS_SCHEMA_DIR", root + "/share/glib-2.0/schemas");

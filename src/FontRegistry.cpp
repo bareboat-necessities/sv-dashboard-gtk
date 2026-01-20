@@ -18,6 +18,7 @@
 
 #ifdef _WIN32
   #include <windows.h>
+  #include <cairo.h>
 #else
   #include <unistd.h>
 #endif
@@ -140,6 +141,14 @@ bool FontRegistry::registerBundledFonts() {
       std::string norm = dir;
       for (auto& ch : norm) if (ch == '\\') ch = '/';
       const FcBool ok = FcConfigAppFontAddDir(cfg, reinterpret_cast<const FcChar8*>(norm.c_str()));
+
+      // Force a Fontconfig/FreeType-backed PangoCairo fontmap for this thread.
+      // Equivalent to PANGOCAIRO_BACKEND=fc, but programmatic and harder to “lose”.
+      PangoFontMap* ft_map = pango_cairo_font_map_new_for_font_type(CAIRO_FONT_TYPE_FT);
+      if (ft_map) {
+        pango_cairo_font_map_set_default(PANGO_CAIRO_FONT_MAP(ft_map));
+        g_object_unref(ft_map); // default holds its own ref
+      }
 #else
       const FcBool ok = FcConfigAppFontAddDir(cfg, reinterpret_cast<const FcChar8*>(dir.c_str()));
 #endif
