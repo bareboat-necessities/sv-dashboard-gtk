@@ -42,7 +42,6 @@ void RuntimeEnv::ensureDir(const string& path) {
 
 void RuntimeEnv::setEnv(const char* key, const string& val) {
 #ifdef _WIN32
-  // Make env visible to BOTH CRT getenv() and WinAPI readers.
   _putenv_s(key, val.c_str());
   SetEnvironmentVariableA(key, val.c_str());
 #else

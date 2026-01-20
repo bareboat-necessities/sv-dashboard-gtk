@@ -9,20 +9,18 @@ int main(int argc, char** argv) {
 #ifdef _WIN32
   // Don’t let GLib try to autolaunch D-Bus on Windows.
   if (!g_getenv("GSETTINGS_BACKEND")) {
-    RuntimeEnv::setEnv("GSETTINGS_BACKEND", "memory");
+    g_setenv("GSETTINGS_BACKEND", "memory", TRUE);
   }
 
-  // If user runs from Cygwin/MSYS shells with conflicting env, ignore them.
+  // If started from MSYS/Cygwin shells, only clear fontconfig *config* overrides.
+  // DO NOT clear HOME/XDG_CACHE_HOME/FC_CACHEDIR: those are exactly what make fontconfig writable.
   const char* vars_to_clear[] = {
       "FONTCONFIG_FILE",
       "FONTCONFIG_PATH",
-      "FC_CACHEDIR",
-      "XDG_CACHE_HOME",
-      "HOME",
       nullptr
   };
   for (int i = 0; vars_to_clear[i]; ++i) {
-    RuntimeEnv::unsetEnv(vars_to_clear[i]);
+    g_unsetenv(vars_to_clear[i]);
   }
 #endif
 
