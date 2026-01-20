@@ -34,7 +34,7 @@ static void set_nav_button_font(Gtk::Button& b) {
 }
 
 MainWindow::MainWindow() {
-  set_title("SV SAVANNAH Dashboard");
+  set_title("BBN Launcher");
   set_default_size(1400, 800);
 
   apply_css();
