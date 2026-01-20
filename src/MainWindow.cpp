@@ -24,7 +24,7 @@ static void set_nav_button_font(Gtk::Button& b) {
 
   Pango::FontDescription fd;
   fd.set_family(FontRegistry::kFamilyFree);
-  fd.set_weight(Pango::WEIGHT_HEAVY);
+  fd.set_weight(Pango::WEIGHT_NORMAL);
   fd.set_size(48 * Pango::SCALE);
 
   // Button child is a Gtk::Label in gtkmm when using set_label()
