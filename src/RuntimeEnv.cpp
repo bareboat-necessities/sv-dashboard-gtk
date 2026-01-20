@@ -20,8 +20,9 @@ static string utf8_from_wide(const wchar_t* w) {
   if (!w) return {};
   int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
   if (n <= 0) return {};
-  string s(n - 1, '\0');
+  string s(n, '\0'); // room for NUL
   WideCharToMultiByte(CP_UTF8, 0, w, -1, s.data(), n, nullptr, nullptr);
+  s.pop_back(); // drop NUL
   return s;
 }
 
