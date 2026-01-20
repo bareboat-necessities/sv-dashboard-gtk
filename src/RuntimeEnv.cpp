@@ -15,14 +15,15 @@ using namespace std;
 #ifdef _WIN32
 namespace {
 
-// Wide → UTF-8 helper
+// Wide → UTF-8 helper (FIXED: no overflow)
 static string utf8_from_wide(const wchar_t* w) {
   if (!w) return {};
   int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
   if (n <= 0) return {};
-  string s(n, '\0'); // room for NUL
+  string s;
+  s.resize(n); // includes NUL
   WideCharToMultiByte(CP_UTF8, 0, w, -1, s.data(), n, nullptr, nullptr);
-  s.pop_back(); // drop NUL
+  s.resize(n - 1); // drop NUL
   return s;
 }
 
@@ -36,14 +37,26 @@ string RuntimeEnv::toForwardSlashes(string s) {
 
 void RuntimeEnv::ensureDir(const string& path) {
   std::error_code ec;
-  std::filesystem::create_directories(path, ec);
+  std::filesystem::create_directories(std::filesystem::path(path), ec);
 }
 
 void RuntimeEnv::setEnv(const char* key, const string& val) {
 #ifdef _WIN32
+  // Make env visible to BOTH CRT getenv() and WinAPI readers.
   _putenv_s(key, val.c_str());
+  SetEnvironmentVariableA(key, val.c_str());
 #else
   setenv(key, val.c_str(), 1);
+#endif
+}
+
+void RuntimeEnv::unsetEnv(const char* key) {
+#ifdef _WIN32
+  // Clear for BOTH CRT and WinAPI.
+  _putenv_s(key, "");
+  SetEnvironmentVariableA(key, nullptr);
+#else
+  unsetenv(key);
 #endif
 }
 
@@ -75,11 +88,13 @@ void RuntimeEnv::setup() {
 #ifdef _WIN32
   const string root = exeDir();
 
+  // Prefer bundled DLLs/tools
   if (const char* oldPath = getenv("PATH"))
     setEnv("PATH", root + ";" + oldPath);
   else
     setEnv("PATH", root);
 
+  // Writable per-user base
   const string appBase   = localAppDataDir() + "/sv-dashboard-gtk";
   const string cacheHome = appBase + "/cache";
   const string fcCache   = cacheHome + "/fontconfig";
@@ -88,21 +103,20 @@ void RuntimeEnv::setup() {
   ensureDir(cacheHome);
   ensureDir(fcCache);
 
-  // If your fonts.conf uses "~/.cache/fontconfig" or "~/.fontconfig", precreate those too
+  // Some configs still probe these legacy locations (safe to create)
   ensureDir(appBase + "/.cache/fontconfig");
   ensureDir(appBase + "/.fontconfig");
 
-  // Prefer NOT to overwrite HOME unless you really want app-local "home".
-  // If you keep HOME override, ensure appBase exists (done above).
+  // Make fontconfig pick a writable cache directory (hard override)
   setEnv("HOME", appBase);
   setEnv("XDG_CACHE_HOME", cacheHome);
-
-  // *** Key line: tell fontconfig exactly where to write caches ***
   setEnv("FC_CACHEDIR", fcCache);
 
+  // Fontconfig: read-only config, writable cache
   setEnv("FONTCONFIG_PATH", root + "/etc/fonts");
   setEnv("FONTCONFIG_FILE", root + "/etc/fonts/fonts.conf");
 
+  // App resources
   setEnv("SV_DASHBOARD_FONT_DIR", root + "/share/sv-dashboard-gtk/fonts");
   setEnv("GSETTINGS_SCHEMA_DIR", root + "/share/glib-2.0/schemas");
   setEnv("GDK_PIXBUF_MODULEDIR", root + "/lib/gdk-pixbuf-2.0/2.10.0/loaders");
