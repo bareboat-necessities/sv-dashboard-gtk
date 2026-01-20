@@ -20,15 +20,19 @@ executable('sv-dashboard',
   dependencies: [gtkmm, fc],
   install: true)
 
-# Install bundled fonts (after fetch script populates assets/fonts)
+# Install bundled fonts (script populates assets/fonts before build in CI)
 install_subdir('assets/fonts',
   install_dir: join_paths(get_option('datadir'), 'sv-dashboard-gtk', 'fonts'),
   strip_directory: true)
 
-install_data('third_party/fontawesome/LICENSE.txt',
-  install_dir: join_paths(get_option('datadir'), 'sv-dashboard-gtk', 'licenses'),
-  required: false)
+# Optional license files (only install if present)
+fa_license = 'third_party/fontawesome/LICENSE.txt'
+fa_source  = 'third_party/fontawesome/SOURCE.txt'
 
-install_data('third_party/fontawesome/SOURCE.txt',
-  install_dir: join_paths(get_option('datadir'), 'sv-dashboard-gtk', 'licenses'),
-  required: false)
+if fs.exists(fa_license)
+  install_data(fa_license, install_dir: join_paths(get_option('datadir'), 'sv-dashboard-gtk', 'licenses'))
+endif
+
+if fs.exists(fa_source)
+  install_data(fa_source, install_dir: join_paths(get_option('datadir'), 'sv-dashboard-gtk', 'licenses'))
+endif
