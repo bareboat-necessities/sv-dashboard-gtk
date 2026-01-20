@@ -129,3 +129,12 @@ void RuntimeEnv::setup() {
   setEnv("GDK_PIXBUF_MODULE_FILE", root + "/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache");
 #endif
 }
+
+#ifdef _WIN32
+#if defined(__GNUC__)
+__attribute__((constructor(101)))
+static void sv_dashboard_runtimeenv_premain() {
+  RuntimeEnv::setup();
+}
+#endif
+#endif
