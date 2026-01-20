@@ -236,7 +236,7 @@ jobs:
           mkdir "%HOME%\.cache\fontconfig" 2>nul
           mkdir "%HOME%\.fontconfig" 2>nul
           
-          rem --- App/bundle paths ---
+          rem App/bundle paths
           set "SV_DASHBOARD_FONT_DIR=%DIR%share\sv-dashboard-gtk\fonts"
           set "FONTCONFIG_FILE=%DIR%etc\fonts\fonts.conf"
           set "FONTCONFIG_PATH=%DIR%etc\fonts"
