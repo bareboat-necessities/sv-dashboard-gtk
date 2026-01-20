@@ -133,27 +133,20 @@ bool FontRegistry::registerBundledFonts() {
   // ---- Path A: PangoFc backend (Fontconfig/FreeType) ----
 #if SV_HAVE_PANGO_FC
   {
-    // Ensure fontconfig is initialized using whatever FONTCONFIG_FILE/PATH points at
+    // Load normal config (so cachedirs exist), then add app font dir.
     FcConfig* cfg = FcInitLoadConfigAndFonts();
-    if (!cfg) {
-      std::cerr << "FontRegistry: FcInitLoadConfigAndFonts failed\n";
-      // fall through to Win32 private-font install if available
-    } else {
+    if (cfg) {
 #ifdef _WIN32
-      // Fontconfig behaves better with forward slashes on Windows
       std::string norm = dir;
       for (auto& ch : norm) if (ch == '\\') ch = '/';
       const FcBool ok = FcConfigAppFontAddDir(cfg, reinterpret_cast<const FcChar8*>(norm.c_str()));
 #else
       const FcBool ok = FcConfigAppFontAddDir(cfg, reinterpret_cast<const FcChar8*>(dir.c_str()));
 #endif
-      if (!ok) {
-        std::cerr << "FontRegistry: FcConfigAppFontAddDir failed for: " << dir << "\n";
-      } else {
-        // Rebuild font sets
+      if (ok) {
         FcConfigBuildFonts(cfg);
 
-        // Attach config to the *actual* Pango font map, so it sees app fonts.
+        // Attach to Pango font map so Pango actually sees the config.
         PangoFontMap* fm = pango_cairo_font_map_get_default();
         if (fm && PANGO_IS_FC_FONT_MAP(fm)) {
           pango_fc_font_map_set_config(PANGO_FC_FONT_MAP(fm), cfg);
@@ -161,17 +154,14 @@ bool FontRegistry::registerBundledFonts() {
           pango_font_map_changed(fm);
           return true;
         }
-
-        // If we’re here: Pango is not using Fc backend; fall through to Win32 path.
       }
     }
   }
-#endif // SV_HAVE_PANGO_FC
+#endif
 
-  // ---- Path B: Windows Win32 backend (GDI) ----
+  // ---- Path B: Windows pangowin32 backend (GDI) ----
 #ifdef _WIN32
   {
-    // Private per-process font install (no admin, no system install).
     int added = 0;
 
     GDir* gd = g_dir_open(dir.c_str(), 0, nullptr);
@@ -181,7 +171,6 @@ bool FontRegistry::registerBundledFonts() {
     }
 
     for (const char* name = g_dir_read_name(gd); name; name = g_dir_read_name(gd)) {
-      // crude suffix test (case-insensitive enough for our shipped filenames)
       if (!g_str_has_suffix(name, ".ttf") && !g_str_has_suffix(name, ".TTF") &&
           !g_str_has_suffix(name, ".otf") && !g_str_has_suffix(name, ".OTF")) {
         continue;
@@ -193,9 +182,8 @@ bool FontRegistry::registerBundledFonts() {
       if (g_file_test(full, G_FILE_TEST_IS_REGULAR)) {
         gunichar2* w = g_utf8_to_utf16(full, -1, nullptr, nullptr, nullptr);
         if (w) {
-          if (AddFontResourceExW(reinterpret_cast<const wchar_t*>(w), FR_PRIVATE, nullptr) > 0) {
+          if (AddFontResourceExW(reinterpret_cast<const wchar_t*>(w), FR_PRIVATE, nullptr) > 0)
             ++added;
-          }
           g_free(w);
         }
       }
@@ -206,7 +194,6 @@ bool FontRegistry::registerBundledFonts() {
     g_dir_close(gd);
 
     if (added > 0) {
-      // Let GDI/PangoWin32 refresh font list
       SendMessageW(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
       return true;
     }
@@ -218,3 +205,4 @@ bool FontRegistry::registerBundledFonts() {
   return false;
 #endif
 }
+
