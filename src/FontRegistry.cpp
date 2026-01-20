@@ -48,7 +48,7 @@ std::string FontRegistry::exeDir() {
 std::string FontRegistry::findFontDir() const {
   if (!font_dir_override_.empty()) return font_dir_override_;
 
-  // allow env override (works on Linux + Windows)
+  // Env override (works on Linux + Windows; run.bat sets this)
   if (const char* env = g_getenv("SV_DASHBOARD_FONT_DIR"); env && *env) {
     return std::string(env);
   }
@@ -56,22 +56,35 @@ std::string FontRegistry::findFontDir() const {
   // Dev: ./assets/fonts relative to CWD
   if (g_file_test("assets/fonts", G_FILE_TEST_IS_DIR)) return "assets/fonts";
 
-  // Installed: <exe_dir>/../share/sv-dashboard-gtk/fonts
+  // Relative to executable
   const auto ed = exeDir();
   if (!ed.empty()) {
-    char* p = g_build_filename(ed.c_str(), "..", "share", "sv-dashboard-gtk", "fonts", nullptr);
-    std::string candidate = p ? p : "";
-    g_free(p);
-    if (!candidate.empty() && g_file_test(candidate.c_str(), G_FILE_TEST_IS_DIR)) return candidate;
+    // Portable bundle layout: <exe_dir>/share/sv-dashboard-gtk/fonts
+    {
+      char* p = g_build_filename(ed.c_str(), "share", "sv-dashboard-gtk", "fonts", nullptr);
+      std::string candidate = p ? p : "";
+      g_free(p);
+      if (!candidate.empty() && g_file_test(candidate.c_str(), G_FILE_TEST_IS_DIR)) return candidate;
+    }
 
-    // Portable layout (Windows zip): <exe_dir>/share/...
-    p = g_build_filename(ed.c_str(), "share", "sv-dashboard-gtk", "fonts", nullptr);
-    candidate = p ? p : "";
-    g_free(p);
-    if (!candidate.empty() && g_file_test(candidate.c_str(), G_FILE_TEST_IS_DIR)) return candidate;
+    // Installed layout: <exe_dir>/../share/sv-dashboard-gtk/fonts
+    {
+      char* p = g_build_filename(ed.c_str(), "..", "share", "sv-dashboard-gtk", "fonts", nullptr);
+      std::string candidate = p ? p : "";
+      g_free(p);
+      if (!candidate.empty() && g_file_test(candidate.c_str(), G_FILE_TEST_IS_DIR)) return candidate;
+    }
+
+    // Optional: flat portable layout: <exe_dir>/fonts
+    {
+      char* p = g_build_filename(ed.c_str(), "fonts", nullptr);
+      std::string candidate = p ? p : "";
+      g_free(p);
+      if (!candidate.empty() && g_file_test(candidate.c_str(), G_FILE_TEST_IS_DIR)) return candidate;
+    }
   }
 
-  // Common install locations
+  // Common install locations (Linux)
   const char* prefixes[] = { "/usr/local/share", "/usr/share", nullptr };
   for (int i = 0; prefixes[i]; ++i) {
     char* p = g_build_filename(prefixes[i], "sv-dashboard-gtk", "fonts", nullptr);
