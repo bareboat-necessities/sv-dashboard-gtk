@@ -199,20 +199,26 @@ jobs:
           # Fontconfig config (required for portable fontconfig usage)
           cp -r /mingw64/etc/fonts dist/etc/
 
-          # Fix fontconfig cache dirs for Windows portable
-          # Remove /var/cache/fontconfig (usually not writable on Windows)
+          # Fontconfig config (required for portable fontconfig usage)
+          cp -r /mingw64/etc/fonts dist/etc/
+          
+          # Fontconfig cache fixes (Windows portable)
+          
+          # 1) Remove any nonstandard placeholder line if present (it's not expanded by fontconfig)
+          sed -i 's@<cachedir>LOCAL_APPDATA_FONTCONFIG_CACHE</cachedir>@@g' dist/etc/fonts/fonts.conf
+          
+          # 2) Remove Linux system cache dir if present (useless/unwritable on Windows)
           sed -i 's@<cachedir>/var/cache/fontconfig</cachedir>@@g' dist/etc/fonts/fonts.conf
-
-          # Prepend our writable cache dir rule (must be early in conf.d order)
+          
+          # 3) Ensure conf.d is included (normally is, but make it bulletproof)
+          if ! grep -q '<include[^>]*>conf.d</include>' dist/etc/fonts/fonts.conf; then
+          sed -i 's@</fontconfig>@  <include ignore_missing="yes">conf.d</include>\n</fontconfig>@' dist/etc/fonts/fonts.conf
+          fi
+          
+          # 4) Add our cache-dir fragment early in conf.d order
           mkdir -p dist/etc/fonts/conf.d
           cp -f assets/windows/fontconfig/00-sv-dashboard-cache.conf dist/etc/fonts/conf.d/00-sv-dashboard-cache.conf
           
-          # Ensure we have an XDG cache dir entry (writable if XDG_CACHE_HOME is set)
-          if ! grep -q 'cachedir prefix="xdg"' dist/etc/fonts/fonts.conf; then
-            sed -i 's@</fontconfig>@  <cachedir prefix="xdg">fontconfig</cachedir>\n</fontconfig>@' dist/etc/fonts/fonts.conf
-          fi
-          
-          # Create run.bat (adds HOME + XDG_CACHE_HOME to fix cache errors)
           cat > dist/run.bat <<'EOF'
           @echo off
           setlocal
@@ -221,10 +227,14 @@ jobs:
           rem Keep PATH clean so we don't accidentally pick up Cygwin/Git-bash tools.
           set "PATH=%DIR%;%SystemRoot%\System32;%SystemRoot%"
           
-          rem --- Make fontconfig happy (writable cache) ---
-          set "HOME=%DIR%home"
-          set "XDG_CACHE_HOME=%DIR%var\cache"
-          mkdir "%XDG_CACHE_HOME%\fontconfig" 2>nul
+          rem Per-user writable cache (works even if the EXE is inside a zip / read-only folder)
+          set "APPBASE=%LOCALAPPDATA%\sv-dashboard-gtk"
+          set "HOME=%APPBASE%"
+          set "XDG_CACHE_HOME=%APPBASE%\cache"
+          set "FC_CACHEDIR=%XDG_CACHE_HOME%\fontconfig"
+          mkdir "%FC_CACHEDIR%" 2>nul
+          mkdir "%HOME%\.cache\fontconfig" 2>nul
+          mkdir "%HOME%\.fontconfig" 2>nul
           
           rem --- App/bundle paths ---
           set "SV_DASHBOARD_FONT_DIR=%DIR%share\sv-dashboard-gtk\fonts"
@@ -237,7 +247,7 @@ jobs:
           "%DIR%sv-dashboard.exe"
           endlocal
           EOF
-          
+
           7z a sv-dashboard-${{ env.ARTIFACT_TAG }}-windows-x64.zip ./dist/*
 
       - name: Upload artifact
