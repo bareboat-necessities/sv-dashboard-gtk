@@ -74,26 +74,34 @@ void RuntimeEnv::setup() {
 #ifdef _WIN32
   const string root = exeDir();
 
-  // Prefer bundled DLLs/tools
   if (const char* oldPath = getenv("PATH"))
     setEnv("PATH", root + ";" + oldPath);
   else
     setEnv("PATH", root);
 
-  // Writable per-user cache (works even if exe is inside a zip)
   const string appBase   = localAppDataDir() + "/sv-dashboard-gtk";
   const string cacheHome = appBase + "/cache";
-  ensureDir(cacheHome);
-  ensureDir(cacheHome + "/fontconfig");
+  const string fcCache   = cacheHome + "/fontconfig";
 
+  ensureDir(appBase);
+  ensureDir(cacheHome);
+  ensureDir(fcCache);
+
+  // If your fonts.conf uses "~/.cache/fontconfig" or "~/.fontconfig", precreate those too
+  ensureDir(appBase + "/.cache/fontconfig");
+  ensureDir(appBase + "/.fontconfig");
+
+  // Prefer NOT to overwrite HOME unless you really want app-local "home".
+  // If you keep HOME override, ensure appBase exists (done above).
   setEnv("HOME", appBase);
   setEnv("XDG_CACHE_HOME", cacheHome);
 
-  // Fontconfig: read-only config, writable cache
+  // *** Key line: tell fontconfig exactly where to write caches ***
+  setEnv("FC_CACHEDIR", fcCache);
+
   setEnv("FONTCONFIG_PATH", root + "/etc/fonts");
   setEnv("FONTCONFIG_FILE", root + "/etc/fonts/fonts.conf");
 
-  // App resources
   setEnv("SV_DASHBOARD_FONT_DIR", root + "/share/sv-dashboard-gtk/fonts");
   setEnv("GSETTINGS_SCHEMA_DIR", root + "/share/glib-2.0/schemas");
   setEnv("GDK_PIXBUF_MODULEDIR", root + "/lib/gdk-pixbuf-2.0/2.10.0/loaders");
