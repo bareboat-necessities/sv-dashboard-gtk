@@ -140,47 +140,57 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf dist sv-dashboard-windows-x64.zip
-          mkdir -p dist/share dist/lib dist/etc
+          mkdir -p dist/share dist/lib dist/etc dist/var/cache/fontconfig
 
           cp -f build/sv-dashboard.exe dist/sv-dashboard.exe
 
           mkdir -p dist/share/sv-dashboard-gtk/fonts
           cp -f assets/fonts/*.ttf dist/share/sv-dashboard-gtk/fonts/
 
-          # Copy dependent DLLs next to exe
           for d in $(ldd build/sv-dashboard.exe | awk '{print $3}' | grep -E "^/mingw64/bin/.*\.dll$" | sort -u); do
             cp -f "$d" dist/
           done
 
-          # GLib spawn helpers (recommended on Windows)
           cp -f /mingw64/bin/gspawn-win64-helper.exe dist/ || true
           cp -f /mingw64/bin/gspawn-win64-helper-console.exe dist/ || true
 
-          # GLib schemas (GSettings)
           mkdir -p dist/share/glib-2.0/schemas
           cp -r /mingw64/share/glib-2.0/schemas/* dist/share/glib-2.0/schemas/
           /mingw64/bin/glib-compile-schemas dist/share/glib-2.0/schemas
 
-          # gdk-pixbuf loaders + cache
           mkdir -p dist/lib/gdk-pixbuf-2.0/2.10.0/loaders
           cp -r /mingw64/lib/gdk-pixbuf-2.0/2.10.0/loaders/* dist/lib/gdk-pixbuf-2.0/2.10.0/loaders/
           /mingw64/bin/gdk-pixbuf-query-loaders > dist/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache
 
-          # Fontconfig config (required for portable fontconfig usage)
           cp -r /mingw64/etc/fonts dist/etc/
 
-          # Create run.bat
           cat > dist/run.bat <<'EOF'
           @echo off
           setlocal
           set "DIR=%~dp0"
+
+          REM Hard reset PATH so we don't pick up cygwin gdbus, etc.
           set "PATH=%DIR%;%SystemRoot%\System32;%SystemRoot%"
+
+          REM Make caches writable inside the portable folder
+          set "XDG_CACHE_HOME=%DIR%var\cache"
+          set "FONTCONFIG_CACHE=%DIR%var\cache\fontconfig"
+          set "LOCALAPPDATA=%DIR%var"
+
+          REM Font Awesome bundled fonts
           set "SV_DASHBOARD_FONT_DIR=%DIR%share\sv-dashboard-gtk\fonts"
+
+          REM Fontconfig portable config
           set "FONTCONFIG_FILE=%DIR%etc\fonts\fonts.conf"
           set "FONTCONFIG_PATH=%DIR%etc\fonts"
+
+          REM GSettings schemas
           set "GSETTINGS_SCHEMA_DIR=%DIR%share\glib-2.0\schemas"
+
+          REM gdk-pixbuf loaders
           set "GDK_PIXBUF_MODULE_FILE=%DIR%lib\gdk-pixbuf-2.0\2.10.0\loaders.cache"
           set "GDK_PIXBUF_MODULEDIR=%DIR%lib\gdk-pixbuf-2.0\2.10.0\loaders"
+
           "%DIR%sv-dashboard.exe"
           endlocal
           EOF
