@@ -24,15 +24,3 @@ executable('sv-dashboard',
 install_subdir('assets/fonts',
   install_dir: join_paths(get_option('datadir'), 'sv-dashboard-gtk', 'fonts'),
   strip_directory: true)
-
-# Optional license files (only install if present)
-fa_license = 'third_party/fontawesome/LICENSE.txt'
-fa_source  = 'third_party/fontawesome/SOURCE.txt'
-
-if fs.exists(fa_license)
-  install_data(fa_license, install_dir: join_paths(get_option('datadir'), 'sv-dashboard-gtk', 'licenses'))
-endif
-
-if fs.exists(fa_source)
-  install_data(fa_source, install_dir: join_paths(get_option('datadir'), 'sv-dashboard-gtk', 'licenses'))
-endif
