@@ -25,7 +25,7 @@ private:
   void on_size_allocate_custom(Gtk::Allocation& alloc);
   void apply_ui_scale(int w, int h);
 
-  // NEW: gesture-based swipe/drag
+  // Swipe/drag (robust)
   void setup_gestures();
   void handle_swipe_delta(double dx, double dy, guint32 dt_ms);
 
@@ -34,6 +34,7 @@ private:
   Gtk::Box     root_{Gtk::ORIENTATION_HORIZONTAL};
 
   Gtk::Stack   stack_;
+  Gtk::EventBox swipe_box_;         // NEW: captures events above child
   Gtk::Button  btn_left_;
   Gtk::Button  btn_right_;
 
@@ -60,8 +61,8 @@ private:
   gint64 drag_t0_us_ = 0;
 
   // thresholds
-  static constexpr double  kSwipeLockPx      = 18.0;   // claim gesture when beyond this
-  static constexpr double  kSwipeMinPx       = 120.0;  // switch if dx beyond this
-  static constexpr double  kSwipeFastMinPx   = 70.0;   // or smaller + fast
-  static constexpr guint32 kSwipeFastMaxMs   = 260;    // fast swipe window
+  static constexpr double  kSwipeLockPx      = 18.0;
+  static constexpr double  kSwipeMinPx       = 120.0;
+  static constexpr double  kSwipeFastMinPx   = 70.0;
+  static constexpr guint32 kSwipeFastMaxMs   = 260;
 };

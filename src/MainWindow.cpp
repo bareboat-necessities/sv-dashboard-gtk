@@ -114,39 +114,53 @@ void MainWindow::apply_ui_scale(int w, int h) {
   constexpr double base_h = 800.0;
 
   double s = std::min(w / base_w, h / base_h);
-  s = std::max(0.18, std::min(1.0, s));
+  // Allow smaller than before; 320x200 is ~0.23-0.25
+  s = std::max(0.12, std::min(1.0, s));
 
-  const bool want_labels = (h >= 240) && (s >= 0.33);
-  if (std::fabs(s - ui_scale_) < 0.02 && want_labels == show_labels_) return;
+  // At low-res labels just waste space (and become unreadable)
+  const bool want_labels = (h >= 260) && (s >= 0.33);
+
+  const bool changed = !(std::fabs(s - ui_scale_) < 0.02 && want_labels == show_labels_);
+  if (!changed) return;
 
   ui_scale_ = s;
   show_labels_ = want_labels;
 
-  root_.set_spacing(std::max(1, (int)std::lround(10 * ui_scale_)));
+  root_.set_spacing(std::max(0, (int)std::lround(8 * ui_scale_)));
 
-  // Replace set_child_packing() with margins (gtkmm-safe)
-  const int pad = std::max(0, (int)std::lround(18 * ui_scale_));
+  // Nav buttons cost space; hide at very small widths (swipe remains)
+  const bool tiny = (w <= 420);
+  btn_left_.set_visible(!tiny);
+  btn_right_.set_visible(!tiny);
+
+  // Use margins (gtkmm-safe) as padding
+  const int pad = std::max(0, (int)std::lround(14 * ui_scale_));
   btn_left_.set_margin_start(pad);
   btn_left_.set_margin_end(pad);
   btn_right_.set_margin_start(pad);
   btn_right_.set_margin_end(pad);
 
-  const int nav_px    = std::max(14, (int)std::lround(48 * ui_scale_));
+  // Font sizes (hard minimums)
+  const int nav_px    = std::max(12, (int)std::lround(48 * ui_scale_));
   const int scheme_px = std::max(14, (int)std::lround(34 * ui_scale_));
+
   set_button_fa_font(btn_left_,  nav_px, true);
   set_button_fa_font(btn_right_, nav_px, true);
   set_button_fa_font(scheme_day_,   scheme_px, true);
   set_button_fa_font(scheme_dusk_,  scheme_px, true);
   set_button_fa_font(scheme_night_, scheme_px, true);
 
-  scheme_bar_.set_spacing(std::max(1, (int)std::lround(10 * ui_scale_)));
-  scheme_bar_.set_margin_start(std::max(2, (int)std::lround(22 * ui_scale_)));
-  scheme_bar_.set_margin_bottom(std::max(2, (int)std::lround(18 * ui_scale_)));
+  scheme_bar_.set_spacing(std::max(0, (int)std::lround(8 * ui_scale_)));
+  scheme_bar_.set_margin_start(std::max(2, (int)std::lround(14 * ui_scale_)));
+  scheme_bar_.set_margin_bottom(std::max(2, (int)std::lround(12 * ui_scale_)));
 
   if (page1_) page1_->set_ui_scale(ui_scale_, show_labels_);
   if (page2_) page2_->set_ui_scale(ui_scale_, show_labels_);
 
   css_provider_->load_from_data(build_css(scheme_));
+
+  // Critical: recompute size requests so you can keep shrinking (down to 320x200)
+  queue_resize();
 }
 
 void MainWindow::on_size_allocate_custom(Gtk::Allocation& alloc) {
@@ -168,7 +182,8 @@ void MainWindow::handle_swipe_delta(double dx, double dy, guint32 dt_ms) {
 }
 
 void MainWindow::setup_gestures() {
-  drag_ = Gtk::GestureDrag::create(stack_);
+  // Attach to swipe_box_ (EventBox above child), not stack_.
+  drag_ = Gtk::GestureDrag::create(swipe_box_);
   drag_->set_touch_only(false);
 
   drag_->signal_drag_begin().connect([this](double, double) {
@@ -207,6 +222,11 @@ MainWindow::MainWindow() {
   stack_.add(*page1_, "page1");
   stack_.add(*page2_, "page2");
 
+  // Wrap stack in an EventBox that sits ABOVE its children for event capture.
+  swipe_box_.set_visible_window(false);
+  swipe_box_.set_above_child(true);
+  swipe_box_.add(stack_);
+
   btn_left_.set_label(cp_to_utf8(CHEV_LEFT));
   btn_right_.set_label(cp_to_utf8(CHEV_RIGHT));
   btn_left_.set_relief(Gtk::RELIEF_NONE);
@@ -216,13 +236,18 @@ MainWindow::MainWindow() {
   btn_left_.get_style_context()->add_class("nav");
   btn_right_.get_style_context()->add_class("nav");
 
+  // Make buttons not impose a big minimum size
+  btn_left_.set_size_request(1, 1);
+  btn_right_.set_size_request(1, 1);
+
   btn_left_.signal_clicked().connect([this] { show_page("page1"); });
   btn_right_.signal_clicked().connect([this] { show_page("page2"); });
 
   root_.pack_start(btn_left_, Gtk::PACK_SHRINK, 0);
-  root_.pack_start(stack_, Gtk::PACK_EXPAND_WIDGET);
+  root_.pack_start(swipe_box_, Gtk::PACK_EXPAND_WIDGET);   // IMPORTANT: swipe_box_ here
   root_.pack_start(btn_right_, Gtk::PACK_SHRINK, 0);
 
+  // Theme buttons
   scheme_bar_.set_halign(Gtk::ALIGN_START);
   scheme_bar_.set_valign(Gtk::ALIGN_END);
 
@@ -233,6 +258,7 @@ MainWindow::MainWindow() {
   for (Gtk::Button* b : { &scheme_day_, &scheme_dusk_, &scheme_night_ }) {
     b->set_relief(Gtk::RELIEF_NONE);
     b->set_can_focus(false);
+    b->set_size_request(1, 1);
     b->get_style_context()->add_class("scheme-btn");
   }
   scheme_day_.get_style_context()->add_class("scheme-day");
@@ -256,10 +282,18 @@ MainWindow::MainWindow() {
 
   setup_gestures();
 
+  // Apply scale immediately so startup isn’t tiny (before first resize)
+  apply_ui_scale(1400, 800);
   set_scheme(Scheme::Day);
 
   show_all();
   show_page("page1");
+
+  // Re-apply once the window is realized (actual size known)
+  signal_realize().connect([this] {
+    auto a = get_allocation();
+    apply_ui_scale(a.get_width(), a.get_height());
+  });
 }
 
 void MainWindow::show_page(const Glib::ustring& name) {
