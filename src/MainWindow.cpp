@@ -4,7 +4,7 @@
 #include "FontRegistry.h"
 
 #include <gdk/gdkkeysyms.h>
-#include <gtk/gtk.h>   // for gtk_gesture_set_state (claim gesture)
+#include <gtk/gtk.h>   // gtk_gesture_set_state
 #include <cmath>
 #include <string>
 
@@ -117,7 +117,6 @@ void MainWindow::apply_ui_scale(int w, int h) {
   s = std::max(0.18, std::min(1.0, s));
 
   const bool want_labels = (h >= 240) && (s >= 0.33);
-
   if (std::fabs(s - ui_scale_) < 0.02 && want_labels == show_labels_) return;
 
   ui_scale_ = s;
@@ -125,9 +124,12 @@ void MainWindow::apply_ui_scale(int w, int h) {
 
   root_.set_spacing(std::max(1, (int)std::lround(10 * ui_scale_)));
 
-  const guint pad = (guint)std::max(0, (int)std::lround(18 * ui_scale_));
-  root_.set_child_packing(btn_left_,  false, false, pad, Gtk::PACK_START);
-  root_.set_child_packing(btn_right_, false, false, pad, Gtk::PACK_END);
+  // Replace set_child_packing() with margins (gtkmm-safe)
+  const int pad = std::max(0, (int)std::lround(18 * ui_scale_));
+  btn_left_.set_margin_start(pad);
+  btn_left_.set_margin_end(pad);
+  btn_right_.set_margin_start(pad);
+  btn_right_.set_margin_end(pad);
 
   const int nav_px    = std::max(14, (int)std::lround(48 * ui_scale_));
   const int scheme_px = std::max(14, (int)std::lround(34 * ui_scale_));
@@ -152,7 +154,6 @@ void MainWindow::on_size_allocate_custom(Gtk::Allocation& alloc) {
 }
 
 void MainWindow::handle_swipe_delta(double dx, double dy, guint32 dt_ms) {
-  // must be mostly horizontal
   if (std::fabs(dx) < kSwipeMinPx) {
     if (!(std::fabs(dx) >= kSwipeFastMinPx && dt_ms <= kSwipeFastMaxMs)) return;
   }
@@ -167,17 +168,15 @@ void MainWindow::handle_swipe_delta(double dx, double dy, guint32 dt_ms) {
 }
 
 void MainWindow::setup_gestures() {
-  // Attach to stack_ so it sees events starting on any descendant (icons, grid, etc.)
   drag_ = Gtk::GestureDrag::create(stack_);
-  drag_->set_touch_only(false); // enable mouse drag as well
+  drag_->set_touch_only(false);
 
-  drag_->signal_drag_begin().connect([this](double /*x*/, double /*y*/) {
+  drag_->signal_drag_begin().connect([this](double, double) {
     drag_claimed_ = false;
     drag_t0_us_ = g_get_monotonic_time();
   });
 
   drag_->signal_drag_update().connect([this](double dx, double dy) {
-    // Claim the gesture once we are confidently doing a horizontal drag.
     if (!drag_claimed_) {
       if (std::fabs(dx) >= kSwipeLockPx && std::fabs(dx) > std::fabs(dy) * 1.1) {
         drag_claimed_ = true;
@@ -208,7 +207,6 @@ MainWindow::MainWindow() {
   stack_.add(*page1_, "page1");
   stack_.add(*page2_, "page2");
 
-  // Nav buttons
   btn_left_.set_label(cp_to_utf8(CHEV_LEFT));
   btn_right_.set_label(cp_to_utf8(CHEV_RIGHT));
   btn_left_.set_relief(Gtk::RELIEF_NONE);
@@ -225,12 +223,11 @@ MainWindow::MainWindow() {
   root_.pack_start(stack_, Gtk::PACK_EXPAND_WIDGET);
   root_.pack_start(btn_right_, Gtk::PACK_SHRINK, 0);
 
-  // Theme buttons
   scheme_bar_.set_halign(Gtk::ALIGN_START);
   scheme_bar_.set_valign(Gtk::ALIGN_END);
 
   scheme_day_.set_label(cp_to_utf8(U'\uf185'));   // sun
-  scheme_dusk_.set_label(cp_to_utf8(U'\uf6c4'));  // cloud-sun (if missing, use U'\uf0c2')
+  scheme_dusk_.set_label(cp_to_utf8(U'\uf6c4'));  // cloud-sun (if missing -> U'\uf0c2')
   scheme_night_.set_label(cp_to_utf8(U'\uf186')); // moon
 
   for (Gtk::Button* b : { &scheme_day_, &scheme_dusk_, &scheme_night_ }) {
@@ -254,11 +251,9 @@ MainWindow::MainWindow() {
   overlay_.add_overlay(scheme_bar_);
   add(overlay_);
 
-  // Keys + scaling
   signal_key_press_event().connect(sigc::mem_fun(*this, &MainWindow::on_key_press), false);
   signal_size_allocate().connect(sigc::mem_fun(*this, &MainWindow::on_size_allocate_custom));
 
-  // NEW: robust swipe/drag
   setup_gestures();
 
   set_scheme(Scheme::Day);
@@ -289,9 +284,9 @@ bool MainWindow::on_key_press(GdkEventKey* e) {
       show_page("page1");
       return true;
 
-    case GDK_KEY_1: set_scheme(Scheme::Day);  return true;
-    case GDK_KEY_2: set_scheme(Scheme::Dusk); return true;
-    case GDK_KEY_3: set_scheme(Scheme::Night);return true;
+    case GDK_KEY_1: set_scheme(Scheme::Day);   return true;
+    case GDK_KEY_2: set_scheme(Scheme::Dusk);  return true;
+    case GDK_KEY_3: set_scheme(Scheme::Night); return true;
 
     default:
       return false;
