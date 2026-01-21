@@ -1,28 +1,29 @@
 #pragma once
 
-#include <gtkmm/button.h>
 #include <gtkmm/box.h>
-#include <gtkmm/eventbox.h>
-#include <gtkmm/label.h>
-#include <glibmm/ustring.h>
+#include <gtkmm/grid.h>
+#include <vector>
 
 #include "Icons.h"
 
-class DesktopIcon : public Gtk::Button {
-public:
-  explicit DesktopIcon(const IconSpec& spec);
+class DesktopIcon;
 
-  // Called by Desktop/MainWindow to scale fonts + optionally hide labels
-  void set_ui_scale(double s, bool show_label);
+class Desktop : public Gtk::Box {
+public:
+  explicit Desktop(const std::vector<IconSpec>& icons);
+
+  void set_ui_scale(double s, bool show_labels);
 
 private:
-  static Glib::ustring to_utf8(char32_t cp);
-  void apply_fonts(double s);
+  void apply_layout(double s);
 
-  Gtk::Box      box_{Gtk::ORIENTATION_VERTICAL};
-  Gtk::EventBox icon_box_;   // NEW: square background container
-  Gtk::Label    icon_;
-  Gtk::Label    text_;
+  Gtk::Grid grid_;
+  std::vector<DesktopIcon*> tiles_;
 
-  bool is_brand_ = false;
+  double ui_scale_ = 1.0;
+  bool show_labels_ = true;
+
+  static constexpr int kMarginBase     = 40;
+  static constexpr int kRowSpacingBase = 30;
+  static constexpr int kColSpacingBase = 55;
 };
