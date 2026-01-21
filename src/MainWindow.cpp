@@ -4,6 +4,7 @@
 #include "FontRegistry.h"
 
 #include <gdk/gdkkeysyms.h>
+#include <cmath>
 
 static Glib::ustring cp_to_utf8(char32_t cp) {
   gunichar gcp = static_cast<gunichar>(cp);
@@ -23,23 +24,21 @@ static void set_nav_button_font(Gtk::Button& b) {
   fd.set_weight(Pango::WEIGHT_HEAVY);
   fd.set_size(48 * Pango::SCALE);
 
-  // Button child is a Gtk::Label in gtkmm when using set_label()
   if (auto* child = dynamic_cast<Gtk::Label*>(b.get_child())) {
     child->override_font(fd);
   }
 }
 
+// Bigger/bolder scheme buttons
 static void set_scheme_button_font(Gtk::Button& b) {
-  // Visual style
   b.set_relief(Gtk::RELIEF_NONE);
   b.set_can_focus(false);
   b.get_style_context()->add_class("scheme-btn");
 
-  // Big, bold Font Awesome
   Pango::FontDescription fd;
   fd.set_family(FontRegistry::kFamilyFree);
   fd.set_weight(Pango::WEIGHT_HEAVY);
-  fd.set_size(30 * Pango::SCALE);   // <-- increase if you want bigger (e.g. 34)
+  fd.set_size(34 * Pango::SCALE); // bump to 38 if you want even bigger
 
   if (auto* child = dynamic_cast<Gtk::Label*>(b.get_child())) {
     child->override_font(fd);
@@ -48,27 +47,25 @@ static void set_scheme_button_font(Gtk::Button& b) {
 
 void MainWindow::apply_css_provider_once() {
   css_provider_ = Gtk::CssProvider::create();
-
   auto screen = Gdk::Screen::get_default();
   Gtk::StyleContext::add_provider_for_screen(
       screen, css_provider_, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 }
 
 Glib::ustring MainWindow::build_css(Scheme s) const {
-  // Shared base
   Glib::ustring css = R"css(
 window, GtkWindow { background: #000000; }
 
 .tile { background: transparent; border: none; box-shadow: none; padding: 0; }
 .tile-icon, .tile-label, .nav { }
 
-.tile-icon-box { } /* scheme will define bg/padding */
+.tile-icon-box { }
 
 .scheme-btn {
   background: transparent;
   border: none;
   box-shadow: none;
-  padding: 6px 14px;     /* bigger hit target */
+  padding: 6px 14px;   /* bigger hit target */
   margin-right: 6px;
 }
 .scheme-btn:focus { outline: none; }
@@ -78,11 +75,10 @@ window, GtkWindow { background: #000000; }
 .scheme-night { color: #d00000; }  /* red */
 
 .scheme-btn { opacity: 0.65; }
-.scheme-btn.active { opacity: 1.0; }
+.scheme-btn.active { opacity: 1.0; border-bottom: 2px solid currentColor; }
 )css";
 
   if (s == Scheme::Day) {
-    // Day theme: colored squares + white glyph + white text
     css += R"css(
 .tile-icon, .tile-label, .nav { color: #f2f2f2; }
 
@@ -90,30 +86,28 @@ window, GtkWindow { background: #000000; }
   color: #ffffff;
   border-radius: 16px;
   padding: 14px;
-  background: #2b2b2b; /* fallback */
+  background: #2b2b2b;
 }
 
 /* Day background colors (from your screenshots, approx) */
-.tile-icon-box.bg-azure      { background: #007ACC; } /* Freeboard/AvNav */
-.tile-icon-box.bg-blue       { background: #1976D2; } /* many blue tiles */
-.tile-icon-box.bg-teal       { background: #009688; } /* KIP/Instruments/SignalK */
-.tile-icon-box.bg-teal-light { background: #26A69A; } /* Power */
-.tile-icon-box.bg-cyan       { background: #06B6D4; } /* PyPilot */
-.tile-icon-box.bg-indigo     { background: #5C6BC0; } /* Sky/Windy/Drones */
-.tile-icon-box.bg-gray       { background: #455A64; } /* Camera/Web Cam */
-.tile-icon-box.bg-slate      { background: #556F7B; } /* Provisioning/Files */
-.tile-icon-box.bg-slate-dark { background: #546E7A; } /* Terminal/Tasks/Commands */
-.tile-icon-box.bg-purple     { background: #8E24AA; } /* Radio */
-.tile-icon-box.bg-violet     { background: #7E22CE; } /* T-Storms */
-.tile-icon-box.bg-red        { background: #DC2626; } /* Music/Video */
+.tile-icon-box.bg-azure      { background: #007ACC; }
+.tile-icon-box.bg-blue       { background: #1976D2; }
+.tile-icon-box.bg-teal       { background: #009688; }
+.tile-icon-box.bg-teal-light { background: #26A69A; }
+.tile-icon-box.bg-cyan       { background: #06B6D4; }
+.tile-icon-box.bg-indigo     { background: #5C6BC0; }
+.tile-icon-box.bg-gray       { background: #455A64; }
+.tile-icon-box.bg-slate      { background: #556F7B; }
+.tile-icon-box.bg-slate-dark { background: #546E7A; }
+.tile-icon-box.bg-purple     { background: #8E24AA; }
+.tile-icon-box.bg-violet     { background: #7E22CE; }
+.tile-icon-box.bg-red        { background: #DC2626; }
 )css";
   } else if (s == Scheme::Dusk) {
-    // Dusk: monochrome white/gray on dark background
     css += R"css(
 .tile-icon { color: #e6e6e6; }
 .tile-label, .nav { color: #c8c8c8; }
 
-/* keep layout stable but no colored squares */
 .tile-icon-box {
   background: transparent;
   padding: 14px;
@@ -121,7 +115,6 @@ window, GtkWindow { background: #000000; }
 }
 )css";
   } else {
-    // Night: red monochrome on dark background
     css += R"css(
 .tile-icon, .tile-label, .nav { color: #d00000; }
 
@@ -142,7 +135,6 @@ void MainWindow::refresh_scheme_buttons() {
     if (on) sc->add_class("active");
     else    sc->remove_class("active");
   };
-
   set_active(scheme_day_,   scheme_ == Scheme::Day);
   set_active(scheme_dusk_,  scheme_ == Scheme::Dusk);
   set_active(scheme_night_, scheme_ == Scheme::Night);
@@ -184,16 +176,17 @@ MainWindow::MainWindow() {
   root_.pack_start(stack_, Gtk::PACK_EXPAND_WIDGET);
   root_.pack_start(btn_right_, Gtk::PACK_SHRINK, 18);
 
-  // Bottom-left scheme buttons
+  // Bottom-left scheme buttons (FontAwesome, bold)
   scheme_bar_.set_spacing(10);
   scheme_bar_.set_halign(Gtk::ALIGN_START);
   scheme_bar_.set_valign(Gtk::ALIGN_END);
   scheme_bar_.set_margin_start(22);
   scheme_bar_.set_margin_bottom(18);
 
-  scheme_day_.set_label(cp_to_utf8(U'\uf185'));   // fa-sun
-  scheme_dusk_.set_label(cp_to_utf8(U'\uf6c4'));  // fa-cloud-sun
-  scheme_night_.set_label(cp_to_utf8(U'\uf186')); // fa-moon
+  // fa-sun / fa-cloud-sun / fa-moon (solid)
+  scheme_day_.set_label(cp_to_utf8(U'\uf185'));   // sun
+  scheme_dusk_.set_label(cp_to_utf8(U'\uf6c4'));  // cloud-sun (if missing in your FA, swap to U'\uf0c2' (cloud))
+  scheme_night_.set_label(cp_to_utf8(U'\uf186')); // moon
 
   set_scheme_button_font(scheme_day_);
   set_scheme_button_font(scheme_dusk_);
@@ -216,8 +209,13 @@ MainWindow::MainWindow() {
   overlay_.add_overlay(scheme_bar_);
   add(overlay_);
 
-  // Key handling
+  // Keys
   signal_key_press_event().connect(sigc::mem_fun(*this, &MainWindow::on_key_press), false);
+
+  // NEW: Enable and listen for generic events so we can detect swipe/drag
+  // ALL_EVENTS_MASK is the safest across gdkmm versions.
+  add_events(Gdk::ALL_EVENTS_MASK);
+  signal_event().connect(sigc::mem_fun(*this, &MainWindow::on_any_event), false);
 
   // Default scheme + show
   set_scheme(Scheme::Day);
@@ -248,7 +246,6 @@ bool MainWindow::on_key_press(GdkEventKey* e) {
       show_page("page1");
       return true;
 
-    // Optional scheme hotkeys
     case GDK_KEY_1:
       set_scheme(Scheme::Day);
       return true;
@@ -262,4 +259,104 @@ bool MainWindow::on_key_press(GdkEventKey* e) {
     default:
       return false;
   }
+}
+
+void MainWindow::handle_swipe_delta(double dx, double dy, guint32 dt_ms) {
+  // Require mostly-horizontal movement to avoid accidental page switches
+  if (std::fabs(dx) < kSwipeMinPx) {
+    // allow fast short swipe
+    if (!(std::fabs(dx) >= kSwipeFastMinPx && dt_ms <= kSwipeFastMaxMs)) return;
+  }
+  if (std::fabs(dx) < std::fabs(dy) * 1.2) return;
+
+  const auto name = stack_.get_visible_child_name();
+
+  if (dx < 0) {
+    // swipe left -> go to page2
+    if (name == "page1") show_page("page2");
+  } else {
+    // swipe right -> go to page1
+    if (name == "page2") show_page("page1");
+  }
+}
+
+bool MainWindow::on_any_event(GdkEvent* e) {
+  // Use root coords so it works regardless of which child widget got the event
+  auto get_xy_root_time = [&](double& xr, double& yr, guint32& t) -> bool {
+    switch (e->type) {
+      case GDK_BUTTON_PRESS:
+      case GDK_BUTTON_RELEASE:
+        xr = e->button.x_root; yr = e->button.y_root; t = e->button.time; return true;
+      case GDK_MOTION_NOTIFY:
+        xr = e->motion.x_root; yr = e->motion.y_root; t = e->motion.time; return true;
+      case GDK_TOUCH_BEGIN:
+      case GDK_TOUCH_UPDATE:
+      case GDK_TOUCH_END:
+      case GDK_TOUCH_CANCEL:
+        xr = e->touch.x_root; yr = e->touch.y_root; t = e->touch.time; return true;
+      default:
+        return false;
+    }
+  };
+
+  double xr = 0.0, yr = 0.0;
+  guint32 t = 0;
+  if (!get_xy_root_time(xr, yr, t)) return false;
+
+  // Start tracking on mouse press or touch begin
+  if (e->type == GDK_BUTTON_PRESS) {
+    if (e->button.button != 1) return false; // left mouse only
+    swipe_tracking_ = true;
+    swipe_locked_   = false;
+    swipe_start_x_  = swipe_last_x_ = xr;
+    swipe_start_y_  = swipe_last_y_ = yr;
+    swipe_start_t_  = t;
+    return false; // don’t block normal clicks yet
+  }
+
+  if (e->type == GDK_TOUCH_BEGIN) {
+    swipe_tracking_ = true;
+    swipe_locked_   = false;
+    swipe_start_x_  = swipe_last_x_ = xr;
+    swipe_start_y_  = swipe_last_y_ = yr;
+    swipe_start_t_  = t;
+    return false;
+  }
+
+  // Track motion
+  if ((e->type == GDK_MOTION_NOTIFY || e->type == GDK_TOUCH_UPDATE) && swipe_tracking_) {
+    swipe_last_x_ = xr;
+    swipe_last_y_ = yr;
+
+    const double dx = swipe_last_x_ - swipe_start_x_;
+    const double dy = swipe_last_y_ - swipe_start_y_;
+
+    // Once movement is clearly horizontal, "lock" swipe so icons are less likely to click
+    if (!swipe_locked_) {
+      if (std::fabs(dx) >= kSwipeLockPx && std::fabs(dx) > std::fabs(dy) * 1.1) {
+        swipe_locked_ = true;
+      }
+    }
+
+    // If locked, consume motion to reduce accidental child interactions
+    return swipe_locked_;
+  }
+
+  // End gesture
+  if ((e->type == GDK_BUTTON_RELEASE || e->type == GDK_TOUCH_END || e->type == GDK_TOUCH_CANCEL) && swipe_tracking_) {
+    swipe_tracking_ = false;
+
+    const double dx = xr - swipe_start_x_;
+    const double dy = yr - swipe_start_y_;
+    const guint32 dt_ms = (t >= swipe_start_t_) ? (t - swipe_start_t_) : 0;
+
+    handle_swipe_delta(dx, dy, dt_ms);
+
+    // If we locked swipe, consume the release to reduce accidental button activation
+    const bool consumed = swipe_locked_;
+    swipe_locked_ = false;
+    return consumed;
+  }
+
+  return false;
 }

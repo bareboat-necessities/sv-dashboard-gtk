@@ -19,6 +19,10 @@ private:
 
   bool on_key_press(GdkEventKey* e);
 
+  // NEW: one handler catches mouse + touch events for swipe/drag
+  bool on_any_event(GdkEvent* e);
+  void handle_swipe_delta(double dx, double dy, guint32 dt_ms);
+
   // Layout
   Gtk::Overlay overlay_;
   Gtk::Box     root_{Gtk::ORIENTATION_HORIZONTAL};
@@ -37,4 +41,19 @@ private:
   Glib::RefPtr<Gtk::CssProvider> css_provider_;
 
   Scheme scheme_ = Scheme::Day;
+
+  // ---- Swipe state ----
+  bool    swipe_tracking_ = false;
+  bool    swipe_locked_   = false;   // once we detect a real drag, we "own" the gesture
+  double  swipe_start_x_  = 0.0;
+  double  swipe_start_y_  = 0.0;
+  double  swipe_last_x_   = 0.0;
+  double  swipe_last_y_   = 0.0;
+  guint32 swipe_start_t_  = 0;
+
+  // thresholds
+  static constexpr double  kSwipeLockPx      = 18.0;   // start treating as drag
+  static constexpr double  kSwipeMinPx       = 120.0;  // switch pages if dx beyond this
+  static constexpr double  kSwipeFastMinPx   = 70.0;   // or smaller + fast
+  static constexpr guint32 kSwipeFastMaxMs   = 260;    // fast swipe time window
 };
