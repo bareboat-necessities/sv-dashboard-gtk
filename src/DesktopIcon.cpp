@@ -3,12 +3,14 @@
 
 #include <cmath>
 
-static constexpr int ICON_PX_BASE   = 56;
-static constexpr int LABEL_PX_BASE  = 20;
-static constexpr int SPACING_BASE   = 10;
+static constexpr int ICON_PX_BASE  = 56;
+static constexpr int LABEL_PX_BASE = 20;
+static constexpr int SPACING_BASE  = 10;
 
-static constexpr int ICON_BOX_BASE  = 88;  // square at scale=1
-static constexpr int ICON_PAD_BASE  = 14;  // inner margins around glyph
+// Fixed square size (scale=1). Keeps all icon backgrounds identical.
+// (56px icon + padding)
+static constexpr int ICON_BOX_BASE = 88;
+static constexpr int ICON_PAD_BASE = 14;
 
 Glib::ustring DesktopIcon::to_utf8(char32_t cp) {
   gunichar gcp = static_cast<gunichar>(cp);
@@ -32,12 +34,14 @@ DesktopIcon::DesktopIcon(const IconSpec& spec)
 
   icon_.set_halign(Gtk::ALIGN_CENTER);
   icon_.set_valign(Gtk::ALIGN_CENTER);
+
   text_.set_halign(Gtk::ALIGN_CENTER);
   text_.set_valign(Gtk::ALIGN_CENTER);
 
   icon_.get_style_context()->add_class("tile-icon");
   text_.get_style_context()->add_class("tile-label");
 
+  // Square background container draws the background (NOT the label)
   icon_box_.set_visible_window(true);
   icon_box_.set_halign(Gtk::ALIGN_CENTER);
   icon_box_.set_valign(Gtk::ALIGN_CENTER);
@@ -48,6 +52,7 @@ DesktopIcon::DesktopIcon(const IconSpec& spec)
   box_.pack_start(text_, Gtk::PACK_SHRINK);
   add(box_);
 
+  // Click handler placeholder
   signal_clicked().connect([label = spec.label] { (void)label; });
 
   set_ui_scale(1.0, true);
@@ -68,6 +73,7 @@ void DesktopIcon::apply_fonts(double s) {
   const int icon_px  = std::max(8, (int)std::lround(ICON_PX_BASE  * s));
   const int label_px = std::max(6, (int)std::lround(LABEL_PX_BASE * s));
 
+  // Font Awesome icon font
   Pango::FontDescription fa;
   if (is_brand_) {
     fa.set_family(FontRegistry::kFamilyBrands);
@@ -79,18 +85,20 @@ void DesktopIcon::apply_fonts(double s) {
   fa.set_size(icon_px * Pango::SCALE);
   icon_.override_font(fa);
 
+  // Text font
   Pango::FontDescription txt;
   txt.set_family("Sans");
   txt.set_size(label_px * Pango::SCALE);
   text_.override_font(txt);
 
-  // Inner margins -> padding without CSS sizing surprises
+  // Inner padding (in code, not CSS), so sizing is stable
   const int pad = std::max(1, (int)std::lround(ICON_PAD_BASE * s));
   icon_.set_margin_top(pad);
   icon_.set_margin_bottom(pad);
   icon_.set_margin_start(pad);
   icon_.set_margin_end(pad);
 
+  // Force square icon background size (this fixes rectangles)
   const int box_px = std::max(icon_px + 2 * pad, (int)std::lround(ICON_BOX_BASE * s));
   icon_box_.set_size_request(box_px, box_px);
 }
