@@ -74,9 +74,9 @@ Glib::ustring MainWindow::build_css(Scheme s) const {
   css += ".scheme-btn.active { opacity: 1.0; border-bottom: 2px solid currentColor; }\n";
 
   if (s == Scheme::Day) {
-    css += ".tile-icon, .tile-label, .nav { color: #f2f2f2; }\n";
+    css += ".tile-label, .nav { color: #f2f2f2; }\n";
 
-    // IMPORTANT: no padding here; the square size is controlled in DesktopIcon.cpp
+    // Icon color + background are on tile-icon-box now
     css += ".tile-icon-box { background:#2b2b2b; color:#ffffff; border-radius:" + itos(icon_radius) + "px; }\n";
 
     css += ".tile-icon-box.bg-azure      { background:#007ACC; }\n";
@@ -91,13 +91,16 @@ Glib::ustring MainWindow::build_css(Scheme s) const {
     css += ".tile-icon-box.bg-purple     { background:#8E24AA; }\n";
     css += ".tile-icon-box.bg-violet     { background:#7E22CE; }\n";
     css += ".tile-icon-box.bg-red        { background:#DC2626; }\n";
+
   } else if (s == Scheme::Dusk) {
-    css += ".tile-icon { color:#e6e6e6; }\n";
     css += ".tile-label, .nav { color:#c8c8c8; }\n";
-    css += ".tile-icon-box { background:transparent; border-radius:" + itos(icon_radius) + "px; }\n";
+    // FIX: icon glyph is drawn inside tile-icon-box
+    css += ".tile-icon-box { color:#e6e6e6; background:transparent; border-radius:" + itos(icon_radius) + "px; }\n";
+
   } else {
-    css += ".tile-icon, .tile-label, .nav { color:#d00000; }\n";
-    css += ".tile-icon-box { background:transparent; border-radius:" + itos(icon_radius) + "px; }\n";
+    css += ".tile-label, .nav { color:#d00000; }\n";
+    // FIX: icon glyph is drawn inside tile-icon-box
+    css += ".tile-icon-box { color:#d00000; background:transparent; border-radius:" + itos(icon_radius) + "px; }\n";
   }
 
   return Glib::ustring(css);
@@ -125,12 +128,10 @@ void MainWindow::apply_ui_scale(int w, int h) {
   constexpr double base_h = 800.0;
 
   double s = std::min(w / base_w, h / base_h);
-  // allow to go smaller than before
   s = std::max(0.06, std::min(1.0, s));
 
   const bool want_labels = (h >= 260) && (s >= 0.33);
 
-  // Update even for small changes so tiny-window resizing keeps reacting
   if (std::fabs(s - ui_scale_) < 0.005 && want_labels == show_labels_) return;
 
   ui_scale_ = s;
@@ -138,7 +139,6 @@ void MainWindow::apply_ui_scale(int w, int h) {
 
   root_.set_spacing(std::max(0, (int)std::lround(8 * ui_scale_)));
 
-  // Hide nav at very small widths to make 320x200 achievable
   const bool tiny = (w <= 420);
   btn_left_.set_visible(!tiny);
   btn_right_.set_visible(!tiny);
@@ -150,7 +150,6 @@ void MainWindow::apply_ui_scale(int w, int h) {
   btn_right_.set_margin_end(pad);
 
   const int nav_px    = std::max(10, (int)std::lround(48 * ui_scale_));
-  // Theme icons MUST shrink -> low minimum
   const int scheme_px = std::max(6,  (int)std::lround(34 * ui_scale_));
 
   set_button_fa_font(btn_left_,  nav_px, true);
@@ -255,7 +254,7 @@ MainWindow::MainWindow() {
   scheme_bar_.set_valign(Gtk::ALIGN_END);
 
   scheme_day_.set_label(cp_to_utf8(U'\uf185'));   // sun
-  scheme_dusk_.set_label(cp_to_utf8(U'\uf6c4'));  // cloud-sun (fallback if missing: U'\uf0c2')
+  scheme_dusk_.set_label(cp_to_utf8(U'\uf6c4'));  // cloud-sun
   scheme_night_.set_label(cp_to_utf8(U'\uf186')); // moon
 
   for (Gtk::Button* b : { &scheme_day_, &scheme_dusk_, &scheme_night_ }) {
@@ -282,19 +281,16 @@ MainWindow::MainWindow() {
 
   signal_key_press_event().connect(sigc::mem_fun(*this, &MainWindow::on_key_press), false);
 
-  // Scale based on client area
   overlay_.signal_size_allocate().connect(sigc::mem_fun(*this, &MainWindow::on_overlay_size_allocate));
 
   setup_gestures();
 
-  // Force an initial pass; ui_scale_ starts at -1 so it won't early-return
   apply_ui_scale(1400, 800);
   set_scheme(Scheme::Day);
 
   show_all();
   show_page("page1");
 
-  // Ensure correct sizes after realization
   signal_realize().connect([this] {
     auto a = overlay_.get_allocation();
     apply_ui_scale(a.get_width(), a.get_height());

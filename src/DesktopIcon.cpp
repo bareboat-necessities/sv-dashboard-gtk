@@ -10,12 +10,12 @@
 static constexpr int LABEL_PX_BASE = 20;
 static constexpr int SPACING_BASE  = 10;
 
-// Fixed square size at scale=1
-static constexpr int ICON_BOX_BASE = 88;
+// Bigger square tile (scale=1)
+static constexpr int ICON_BOX_BASE = 112;
 
-// Smaller => more “padding” inside the square (this is what you want)
-// 0.52 tends to look like your screenshots.
-static constexpr double ICON_FRACTION = 0.52;
+// Smaller glyph inside square => visible padding.
+// 0.50 is a good starting point; lower => more padding.
+static constexpr double ICON_FRACTION = 0.50;
 
 Glib::ustring DesktopIcon::to_utf8(char32_t cp) {
   gunichar gcp = static_cast<gunichar>(cp);
@@ -48,7 +48,7 @@ void DesktopIcon::IconCanvas::set_font(const Pango::FontDescription& fd) {
 void DesktopIcon::IconCanvas::set_box_px(int px) {
   box_px_ = std::max(12, px);
   update_glyph_px_();
-  queue_resize();  // important: re-run size negotiation
+  queue_resize(); // rerun size negotiation
   queue_draw();
 }
 
@@ -71,13 +71,13 @@ bool DesktopIcon::IconCanvas::on_draw(const Cairo::RefPtr<Cairo::Context>& cr) {
   const int w = get_allocated_width();
   const int h = get_allocated_height();
 
-  // CSS background (bg color + rounded corners)
+  // Background + rounded corners from CSS (.tile-icon-box + bg-*)
   sc->render_background(cr, 0, 0, w, h);
 
   if (glyph_.empty()) return true;
 
-  // Foreground color from CSS ("color:")
-  const auto fg = sc->get_color(sc->get_state());
+  // IMPORTANT: use NORMAL state color (fixes “color broken” when hovered/active)
+  const auto fg = sc->get_color(Gtk::STATE_FLAG_NORMAL);
   cr->set_source_rgba(fg.get_red(), fg.get_green(), fg.get_blue(), fg.get_alpha());
 
   auto layout = create_pango_layout(glyph_);

@@ -32,7 +32,7 @@ private:
   protected:
     bool on_draw(const Cairo::RefPtr<Cairo::Context>& cr) override;
 
-    // Force fixed size no matter what the layout wants
+    // Hard-force a fixed square preferred size so boxes NEVER differ.
     void get_preferred_width_vfunc(int& min_w, int& nat_w) const override;
     void get_preferred_height_vfunc(int& min_h, int& nat_h) const override;
 
@@ -40,8 +40,8 @@ private:
     Glib::ustring glyph_;
     Pango::FontDescription font_;
 
-    int box_px_ = 88;
-    int glyph_px_ = 50;
+    int box_px_ = 112;
+    int glyph_px_ = 56;
 
     void update_glyph_px_();
   };
