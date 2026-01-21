@@ -2,8 +2,7 @@
 #include "FontRegistry.h"
 
 #include <glib.h>
-#include <pangomm/layout.h>
-#include <pangomm/cairo.h>
+#include <pango/pangocairo.h>   // <-- use C API instead of pangomm/cairo.h
 
 #include <cmath>
 
@@ -14,7 +13,7 @@ static constexpr int SPACING_BASE  = 10;
 // Square icon background size at scale=1
 static constexpr int ICON_BOX_BASE = 88;
 
-// Icon size relative to square (smaller => more padding). 0.58 looks like your screenshots.
+// Icon size relative to square (smaller => more padding inside the box)
 static constexpr double ICON_FRACTION = 0.58;
 
 Glib::ustring DesktopIcon::to_utf8(char32_t cp) {
@@ -62,17 +61,17 @@ bool DesktopIcon::IconCanvas::on_draw(const Cairo::RefPtr<Cairo::Context>& cr) {
   const int w = get_allocated_width();
   const int h = get_allocated_height();
 
-  // Draw CSS background + rounded corners from .tile-icon-box/.bg-*
+  // Draw CSS background (color + rounded corners come from CSS)
   sc->render_background(cr, 0, 0, w, h);
 
   if (glyph_.empty())
     return true;
 
-  // Foreground color from CSS (Day: white; Dusk: gray; Night: red)
+  // Foreground color comes from CSS ("color:"), so Day/Dusk/Night works
   const auto fg = sc->get_color(sc->get_state());
   cr->set_source_rgba(fg.get_red(), fg.get_green(), fg.get_blue(), fg.get_alpha());
 
-  // Pango layout for the glyph
+  // Create a Pango layout for the glyph
   auto layout = create_pango_layout(glyph_);
   Pango::FontDescription fd = font_;
   fd.set_size(glyph_px_ * Pango::SCALE);
@@ -85,7 +84,9 @@ bool DesktopIcon::IconCanvas::on_draw(const Cairo::RefPtr<Cairo::Context>& cr) {
   const double y = (h - lh) * 0.5;
 
   cr->move_to(x, y);
-  Pango::Cairo::show_layout(cr, layout);
+
+  // Render with PangoCairo C API (no pangomm/cairo.h needed)
+  pango_cairo_show_layout(cr->cobj(), layout->gobj());
 
   return true;
 }
@@ -132,11 +133,11 @@ void DesktopIcon::set_color_class(const std::string& cls) {
 }
 
 void DesktopIcon::apply_fonts(double s) {
-  // EXACT square size for every icon
+  // EXACT square for every tile, every glyph
   const int box_px = std::max(12, (int)std::lround(ICON_BOX_BASE * s));
   icon_box_.set_box_px(box_px);
 
-  // Font family/weight for FA6
+  // Font Awesome family/weight
   Pango::FontDescription fa;
   if (is_brand_) {
     fa.set_family(FontRegistry::kFamilyBrands);
@@ -147,6 +148,7 @@ void DesktopIcon::apply_fonts(double s) {
   }
   icon_box_.set_font(fa);
 
+  // Label font
   const int label_px = std::max(6, (int)std::lround(LABEL_PX_BASE * s));
   Pango::FontDescription txt;
   txt.set_family("Sans");
