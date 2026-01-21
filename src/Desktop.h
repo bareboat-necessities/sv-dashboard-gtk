@@ -1,13 +1,16 @@
 #pragma once
-#include <gtkmm.h>
+
+#include <gtkmm/box.h>
+#include <gtkmm/grid.h>
 #include <vector>
+
 #include "Icons.h"
 
-// A 5×3 grid of DesktopIcon tiles.
-class Desktop final : public Gtk::Box {
+class Desktop : public Gtk::Box {
 public:
   explicit Desktop(const std::vector<IconSpec>& icons);
 
 private:
+  static constexpr int kCols = 5;   // 5 columns like your screenshots
   Gtk::Grid grid_;
 };

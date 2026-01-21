@@ -26,4 +26,7 @@ Desktop::Desktop(const std::vector<IconSpec>& icons)
   }
 
   pack_start(grid_, Gtk::PACK_EXPAND_WIDGET);
+
+  // Helps when this is placed inside a Gtk::Stack
+  show_all_children();
 }

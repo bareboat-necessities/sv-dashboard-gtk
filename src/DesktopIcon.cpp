@@ -1,14 +1,10 @@
 #include "DesktopIcon.h"
 #include "FontRegistry.h"
 
-#include <pango/pango.h>
-
 static constexpr int ICON_PX  = 56;
 static constexpr int LABEL_PX = 20;
 
 Glib::ustring DesktopIcon::to_utf8(char32_t cp) {
-  // Convert a single Unicode codepoint to UTF-8.
-  // Glib::ustring can take UTF-8 bytes.
   gunichar gcp = static_cast<gunichar>(cp);
   gchar buf[8] = {0};
   const int len = g_unichar_to_utf8(gcp, buf);
@@ -21,6 +17,7 @@ DesktopIcon::DesktopIcon(const IconSpec& spec)
   text_(spec.label)
 {
   set_relief(Gtk::RELIEF_NONE);
+  set_can_focus(false); // kiosk feel
   get_style_context()->add_class("tile");
 
   box_.set_spacing(10);
@@ -33,28 +30,34 @@ DesktopIcon::DesktopIcon(const IconSpec& spec)
   icon_.get_style_context()->add_class("tile-icon");
   text_.get_style_context()->add_class("tile-label");
 
+  // NEW: enables Day theme to draw rounded colored square behind glyph
+  icon_.get_style_context()->add_class("tile-icon-box");
+  if (spec.colorClass) {
+    icon_.get_style_context()->add_class(spec.colorClass);
+  }
+
   apply_fonts(spec);
 
   box_.pack_start(icon_, Gtk::PACK_SHRINK);
   box_.pack_start(text_, Gtk::PACK_SHRINK);
   add(box_);
 
-  // Example: click handler via lambda (no-op placeholder)
   signal_clicked().connect([label = spec.label] {
-    // hook your launcher action here
     (void)label;
+    // hook your launcher action here
   });
+
+  show_all_children();
 }
 
 void DesktopIcon::apply_fonts(const IconSpec& spec) {
-  // Pango font: FA6 Free (Solid weight), FA6 Brands (normal weight).
   Pango::FontDescription fa;
   if (spec.isBrand) {
     fa.set_family(FontRegistry::kFamilyBrands);
     fa.set_weight(Pango::WEIGHT_NORMAL);
   } else {
     fa.set_family(FontRegistry::kFamilyFree);
-    fa.set_weight(Pango::WEIGHT_HEAVY); // 900-ish
+    fa.set_weight(Pango::WEIGHT_HEAVY);
   }
   fa.set_size(ICON_PX * Pango::SCALE);
   icon_.override_font(fa);

@@ -3,12 +3,10 @@
 #include "Icons.h"
 #include "FontRegistry.h"
 
-#include <iostream>
+#include <pangomm/cairofontmap.h>
+#include <gdk/gdkkeysyms.h>
 
-static const char* CSS_TEXT =
-  "window { background: #000000; }\n"
-  ".tile { background: transparent; border: none; box-shadow: none; }\n"
-  ".tile-icon, .tile-label, .nav { color: #d00000; }\n";
+#include <iostream>
 
 static Glib::ustring cp_to_utf8(char32_t cp) {
   gunichar gcp = static_cast<gunichar>(cp);
@@ -20,6 +18,7 @@ static Glib::ustring cp_to_utf8(char32_t cp) {
 
 static void set_nav_button_font(Gtk::Button& b) {
   b.set_relief(Gtk::RELIEF_NONE);
+  b.set_can_focus(false);
   b.get_style_context()->add_class("nav");
 
   Pango::FontDescription fd;
@@ -27,23 +26,129 @@ static void set_nav_button_font(Gtk::Button& b) {
   fd.set_weight(Pango::WEIGHT_HEAVY);
   fd.set_size(48 * Pango::SCALE);
 
-  // Button child is a Gtk::Label in gtkmm when using set_label()
   if (auto* child = dynamic_cast<Gtk::Label*>(b.get_child())) {
     child->override_font(fd);
   }
+}
+
+void MainWindow::apply_css_provider_once() {
+  css_provider_ = Gtk::CssProvider::create();
+
+  auto screen = Gdk::Screen::get_default();
+  Gtk::StyleContext::add_provider_for_screen(
+      screen, css_provider_, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+}
+
+Glib::ustring MainWindow::build_css(Scheme s) const {
+  // Shared base
+  Glib::ustring css = R"css(
+window, GtkWindow { background: #000000; }
+
+.tile { background: transparent; border: none; box-shadow: none; padding: 0; }
+.tile-icon, .tile-label, .nav { }
+
+.tile-icon-box { } /* scheme will define bg/padding */
+
+.scheme-btn {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0 8px;
+}
+.scheme-btn label { font-size: 18px; }
+.scheme-btn:focus { outline: none; }
+
+.scheme-day   { color: #d4b000; }  /* gold */
+.scheme-dusk  { color: #b0b0b0; }  /* gray */
+.scheme-night { color: #d00000; }  /* red */
+
+.scheme-btn { opacity: 0.65; }
+.scheme-btn.active { opacity: 1.0; }
+)css";
+
+  if (s == Scheme::Day) {
+    css += R"css(
+.tile-icon, .tile-label, .nav { color: #f2f2f2; }
+
+.tile-icon-box {
+  color: #ffffff;
+  border-radius: 16px;
+  padding: 14px;
+  background: #2b2b2b; /* fallback */
+}
+
+/* Day background colors (extend as you like) */
+.tile-icon-box.bg-blue   { background: #1e73ff; }
+.tile-icon-box.bg-teal   { background: #00a38f; }
+.tile-icon-box.bg-green  { background: #1aa76c; }
+.tile-icon-box.bg-cyan   { background: #1fb6d5; }
+.tile-icon-box.bg-purple { background: #6a5acd; }
+.tile-icon-box.bg-indigo { background: #3f51b5; }
+.tile-icon-box.bg-gray   { background: #56616a; }
+.tile-icon-box.bg-red    { background: #d32f2f; }
+.tile-icon-box.bg-orange { background: #f57c00; }
+)css";
+  } else if (s == Scheme::Dusk) {
+    css += R"css(
+.tile-icon { color: #e6e6e6; }
+.tile-label, .nav { color: #c8c8c8; }
+
+/* keep layout stable, but remove colored squares */
+.tile-icon-box {
+  background: transparent;
+  padding: 14px;
+  border-radius: 16px;
+}
+)css";
+  } else { // Night
+    css += R"css(
+.tile-icon, .tile-label, .nav { color: #d00000; }
+
+.tile-icon-box {
+  background: transparent;
+  padding: 14px;
+  border-radius: 16px;
+}
+)css";
+  }
+
+  return css;
+}
+
+void MainWindow::refresh_scheme_buttons() {
+  auto set_active = [](Gtk::Button& b, bool on) {
+    auto sc = b.get_style_context();
+    if (on) sc->add_class("active");
+    else    sc->remove_class("active");
+  };
+
+  set_active(scheme_day_,   scheme_ == Scheme::Day);
+  set_active(scheme_dusk_,  scheme_ == Scheme::Dusk);
+  set_active(scheme_night_, scheme_ == Scheme::Night);
+}
+
+void MainWindow::set_scheme(Scheme s) {
+  scheme_ = s;
+  css_provider_->load_from_data(build_css(scheme_));
+
+  // If fonts were registered at runtime, this helps Pango notice
+  if (auto fm = Pango::CairoFontMap::get_default()) {
+    fm->changed();
+  }
+
+  refresh_scheme_buttons();
 }
 
 MainWindow::MainWindow() {
   set_title("BBN Launcher");
   set_default_size(1400, 800);
 
-  apply_css();
+  apply_css_provider_once();
 
-  // Stack transition like your UI
+  // Stack
   stack_.set_transition_type(Gtk::STACK_TRANSITION_TYPE_SLIDE_LEFT_RIGHT);
   stack_.set_transition_duration(250);
 
-  // Pages
   auto* p1 = Gtk::manage(new Desktop(PAGE1));
   auto* p2 = Gtk::manage(new Desktop(PAGE2));
   stack_.add(*p1, "page1");
@@ -55,7 +160,6 @@ MainWindow::MainWindow() {
   set_nav_button_font(btn_left_);
   set_nav_button_font(btn_right_);
 
-  // Use lambdas for handlers
   btn_left_.signal_clicked().connect([this] { show_page("page1"); });
   btn_right_.signal_clicked().connect([this] { show_page("page2"); });
 
@@ -64,21 +168,47 @@ MainWindow::MainWindow() {
   root_.pack_start(stack_, Gtk::PACK_EXPAND_WIDGET);
   root_.pack_start(btn_right_, Gtk::PACK_SHRINK, 18);
 
-  add(root_);
+  // === Bottom-left scheme buttons (three small icons) ===
+  scheme_bar_.set_spacing(10);
+  scheme_bar_.set_halign(Gtk::ALIGN_START);
+  scheme_bar_.set_valign(Gtk::ALIGN_END);
+  scheme_bar_.set_margin_start(22);
+  scheme_bar_.set_margin_bottom(18);
 
-  // Key handling (Left/Right, PageUp/PageDown)
+  // Use Unicode for reliability (you can replace with FA if you prefer)
+  scheme_day_.set_label("☀");
+  scheme_dusk_.set_label("☼");
+  scheme_night_.set_label("☾");
+
+  for (Gtk::Button* b : { &scheme_day_, &scheme_dusk_, &scheme_night_ }) {
+    b->set_relief(Gtk::RELIEF_NONE);
+    b->set_can_focus(false);
+    b->get_style_context()->add_class("scheme-btn");
+  }
+  scheme_day_.get_style_context()->add_class("scheme-day");
+  scheme_dusk_.get_style_context()->add_class("scheme-dusk");
+  scheme_night_.get_style_context()->add_class("scheme-night");
+
+  scheme_day_.signal_clicked().connect([this]{ set_scheme(Scheme::Day); });
+  scheme_dusk_.signal_clicked().connect([this]{ set_scheme(Scheme::Dusk); });
+  scheme_night_.signal_clicked().connect([this]{ set_scheme(Scheme::Night); });
+
+  scheme_bar_.pack_start(scheme_day_, Gtk::PACK_SHRINK);
+  scheme_bar_.pack_start(scheme_dusk_, Gtk::PACK_SHRINK);
+  scheme_bar_.pack_start(scheme_night_, Gtk::PACK_SHRINK);
+
+  // Overlay: main content + bottom-left scheme bar
+  overlay_.add(root_);
+  overlay_.add_overlay(scheme_bar_);
+  add(overlay_);
+
+  // Keys (Left/Right, PageUp/PageDown) + optional 1/2/3 for schemes
   signal_key_press_event().connect(sigc::mem_fun(*this, &MainWindow::on_key_press), false);
 
+  // Apply defaults
+  set_scheme(Scheme::Day);
   show_all();
   show_page("page1");
-}
-
-void MainWindow::apply_css() {
-  auto provider = Gtk::CssProvider::create();
-  provider->load_from_data(CSS_TEXT);
-
-  auto screen = Gdk::Screen::get_default();
-  Gtk::StyleContext::add_provider_for_screen(screen, provider, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 }
 
 void MainWindow::show_page(const Glib::ustring& name) {
@@ -98,10 +228,23 @@ bool MainWindow::on_key_press(GdkEventKey* e) {
     case GDK_KEY_Page_Down:
       show_page("page2");
       return true;
+
     case GDK_KEY_Left:
     case GDK_KEY_Page_Up:
       show_page("page1");
       return true;
+
+    // Optional: scheme hotkeys
+    case GDK_KEY_1:
+      set_scheme(Scheme::Day);
+      return true;
+    case GDK_KEY_2:
+      set_scheme(Scheme::Dusk);
+      return true;
+    case GDK_KEY_3:
+      set_scheme(Scheme::Night);
+      return true;
+
     default:
       return false;
   }

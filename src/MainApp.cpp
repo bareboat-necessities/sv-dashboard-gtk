@@ -1,7 +1,7 @@
 #include "MainApp.h"
 #include "MainWindow.h"
-#include "FontRegistry.h"
 
+#include <pangomm/cairofontmap.h>
 #include <iostream>
 
 Glib::RefPtr<MainApp> MainApp::create() {
@@ -12,14 +12,21 @@ MainApp::MainApp()
 : Gtk::Application("com.example.sv_dashboard")
 {}
 
-void MainApp::on_activate() {
-  // Register bundled fonts before UI
-  FontRegistry reg;
-  if (!reg.registerBundledFonts()) {
+void MainApp::on_startup() {
+  Gtk::Application::on_startup();
+
+  // Register bundled fonts before UI is created
+  if (!font_registry_.registerBundledFonts()) {
     std::cerr << "Failed to register bundled Font Awesome fonts.\n";
-    // We still start; icons may show as squares.
   }
 
+  // Nudge Pango to refresh font map (helps when fonts are added at runtime)
+  if (auto fm = Pango::CairoFontMap::get_default()) {
+    fm->changed();
+  }
+}
+
+void MainApp::on_activate() {
   auto* win = new MainWindow();
   add_window(*win);
   win->signal_hide().connect([win] { delete win; });
