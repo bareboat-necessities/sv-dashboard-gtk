@@ -13,10 +13,7 @@ class DesktopIcon : public Gtk::Button {
 public:
   explicit DesktopIcon(const IconSpec& spec);
 
-  // Used by Desktop/MainWindow scaling
   void set_ui_scale(double s, bool show_label);
-
-  // Used by Desktop.cpp to assign bg color class
   void set_color_class(const std::string& cls);
 
 private:
@@ -25,7 +22,7 @@ private:
 
   Gtk::Box      box_{Gtk::ORIENTATION_VERTICAL};
 
-  // Square background container (this fixes "rectangles" for wide glyphs)
+  // Background is drawn on this fixed-size square
   Gtk::EventBox icon_box_;
   Gtk::Label    icon_;
   Gtk::Label    text_;
