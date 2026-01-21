@@ -39,7 +39,7 @@ inline const std::vector<IconSpec> PAGE1 = {
   { U'\uf2e7', "Provisioning",  false, "bg-slate"      }, // #556F7B
   { U'\uf5a0', "AvNav",         false, "bg-azure"      }, // #007ACC
 
-  { U'\uf6f2', "Vessel",        false, "bg-blue"       }, // #1976D2
+  { U'\uf21a', "Vessel",        false, "bg-blue"       },  // ship
   { U'\uf013', "SignalK",       false, "bg-teal"       }, // #009688
   { U'\uf120', "Terminal",      false, "bg-slate-dark" }, // #546E7A
   { U'\uf0ae', "Tasks",         false, "bg-slate-dark" }, // #546E7A
