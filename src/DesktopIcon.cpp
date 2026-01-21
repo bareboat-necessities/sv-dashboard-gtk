@@ -2,19 +2,20 @@
 #include "FontRegistry.h"
 
 #include <glib.h>
-#include <pango/pangocairo.h>   // <-- use C API instead of pangomm/cairo.h
+#include <pango/pangocairo.h>
 
 #include <cmath>
 
-// Text under icon
+// Under-icon label
 static constexpr int LABEL_PX_BASE = 20;
 static constexpr int SPACING_BASE  = 10;
 
-// Square icon background size at scale=1
+// Fixed square size at scale=1
 static constexpr int ICON_BOX_BASE = 88;
 
-// Icon size relative to square (smaller => more padding inside the box)
-static constexpr double ICON_FRACTION = 0.58;
+// Smaller => more “padding” inside the square (this is what you want)
+// 0.52 tends to look like your screenshots.
+static constexpr double ICON_FRACTION = 0.52;
 
 Glib::ustring DesktopIcon::to_utf8(char32_t cp) {
   gunichar gcp = static_cast<gunichar>(cp);
@@ -45,9 +46,9 @@ void DesktopIcon::IconCanvas::set_font(const Pango::FontDescription& fd) {
 }
 
 void DesktopIcon::IconCanvas::set_box_px(int px) {
-  box_px_ = std::max(10, px);
-  set_size_request(box_px_, box_px_);
+  box_px_ = std::max(12, px);
   update_glyph_px_();
+  queue_resize();  // important: re-run size negotiation
   queue_draw();
 }
 
@@ -55,23 +56,30 @@ void DesktopIcon::IconCanvas::update_glyph_px_() {
   glyph_px_ = std::max(6, (int)std::lround(box_px_ * ICON_FRACTION));
 }
 
+void DesktopIcon::IconCanvas::get_preferred_width_vfunc(int& min_w, int& nat_w) const {
+  min_w = box_px_;
+  nat_w = box_px_;
+}
+
+void DesktopIcon::IconCanvas::get_preferred_height_vfunc(int& min_h, int& nat_h) const {
+  min_h = box_px_;
+  nat_h = box_px_;
+}
+
 bool DesktopIcon::IconCanvas::on_draw(const Cairo::RefPtr<Cairo::Context>& cr) {
   auto sc = get_style_context();
-
   const int w = get_allocated_width();
   const int h = get_allocated_height();
 
-  // Draw CSS background (color + rounded corners come from CSS)
+  // CSS background (bg color + rounded corners)
   sc->render_background(cr, 0, 0, w, h);
 
-  if (glyph_.empty())
-    return true;
+  if (glyph_.empty()) return true;
 
-  // Foreground color comes from CSS ("color:"), so Day/Dusk/Night works
+  // Foreground color from CSS ("color:")
   const auto fg = sc->get_color(sc->get_state());
   cr->set_source_rgba(fg.get_red(), fg.get_green(), fg.get_blue(), fg.get_alpha());
 
-  // Create a Pango layout for the glyph
   auto layout = create_pango_layout(glyph_);
   Pango::FontDescription fd = font_;
   fd.set_size(glyph_px_ * Pango::SCALE);
@@ -84,18 +92,14 @@ bool DesktopIcon::IconCanvas::on_draw(const Cairo::RefPtr<Cairo::Context>& cr) {
   const double y = (h - lh) * 0.5;
 
   cr->move_to(x, y);
-
-  // Render with PangoCairo C API (no pangomm/cairo.h needed)
   pango_cairo_show_layout(cr->cobj(), layout->gobj());
-
   return true;
 }
 
 // ---- DesktopIcon ----
 
 DesktopIcon::DesktopIcon(const IconSpec& spec)
-: icon_box_(),
-  text_(spec.label),
+: text_(spec.label),
   is_brand_(spec.isBrand)
 {
   set_relief(Gtk::RELIEF_NONE);
@@ -115,29 +119,23 @@ DesktopIcon::DesktopIcon(const IconSpec& spec)
   box_.pack_start(text_, Gtk::PACK_SHRINK);
   add(box_);
 
-  signal_clicked().connect([label = spec.label] { (void)label; });
-
   set_ui_scale(1.0, true);
   show_all_children();
 }
 
 void DesktopIcon::set_color_class(const std::string& cls) {
-  if (!color_class_.empty()) {
+  if (!color_class_.empty())
     icon_box_.get_style_context()->remove_class(color_class_);
-  }
   color_class_ = cls;
-  if (!color_class_.empty()) {
+  if (!color_class_.empty())
     icon_box_.get_style_context()->add_class(color_class_);
-  }
   icon_box_.queue_draw();
 }
 
 void DesktopIcon::apply_fonts(double s) {
-  // EXACT square for every tile, every glyph
   const int box_px = std::max(12, (int)std::lround(ICON_BOX_BASE * s));
   icon_box_.set_box_px(box_px);
 
-  // Font Awesome family/weight
   Pango::FontDescription fa;
   if (is_brand_) {
     fa.set_family(FontRegistry::kFamilyBrands);
@@ -148,7 +146,6 @@ void DesktopIcon::apply_fonts(double s) {
   }
   icon_box_.set_font(fa);
 
-  // Label font
   const int label_px = std::max(6, (int)std::lround(LABEL_PX_BASE * s));
   Pango::FontDescription txt;
   txt.set_family("Sans");

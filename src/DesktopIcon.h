@@ -21,7 +21,6 @@ public:
 private:
   static Glib::ustring to_utf8(char32_t cp);
 
-  // Fixed-size square renderer (CSS provides bg+radius; we render the glyph)
   class IconCanvas : public Gtk::DrawingArea {
   public:
     IconCanvas();
@@ -33,11 +32,16 @@ private:
   protected:
     bool on_draw(const Cairo::RefPtr<Cairo::Context>& cr) override;
 
+    // Force fixed size no matter what the layout wants
+    void get_preferred_width_vfunc(int& min_w, int& nat_w) const override;
+    void get_preferred_height_vfunc(int& min_h, int& nat_h) const override;
+
   private:
     Glib::ustring glyph_;
     Pango::FontDescription font_;
-    int box_px_ = 88;     // exact square size
-    int glyph_px_ = 54;   // actual icon font size (padding comes from glyph < box)
+
+    int box_px_ = 88;
+    int glyph_px_ = 50;
 
     void update_glyph_px_();
   };
