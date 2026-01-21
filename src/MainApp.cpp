@@ -8,7 +8,7 @@ Glib::RefPtr<MainApp> MainApp::create() {
 }
 
 MainApp::MainApp()
-: Gtk::Application("com.example.sv_dashboard")
+: Gtk::Application("github.bbn.sv_dashboard")
 {}
 
 void MainApp::on_startup() {
