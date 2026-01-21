@@ -1,7 +1,6 @@
 #include "MainApp.h"
 #include "MainWindow.h"
 
-#include <pangomm/cairofontmap.h>
 #include <iostream>
 
 Glib::RefPtr<MainApp> MainApp::create() {
@@ -20,10 +19,8 @@ void MainApp::on_startup() {
     std::cerr << "Failed to register bundled Font Awesome fonts.\n";
   }
 
-  // Nudge Pango to refresh font map (helps when fonts are added at runtime)
-  if (auto fm = Pango::CairoFontMap::get_default()) {
-    fm->changed();
-  }
+  // NOTE: On some pangomm versions there is no Pango::CairoFontMap::get_default().
+  // It's safe to omit the font-map refresh; restart or early registration usually suffices.
 }
 
 void MainApp::on_activate() {

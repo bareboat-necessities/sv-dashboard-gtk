@@ -3,10 +3,7 @@
 #include "Icons.h"
 #include "FontRegistry.h"
 
-#include <pangomm/cairofontmap.h>
 #include <gdk/gdkkeysyms.h>
-
-#include <iostream>
 
 static Glib::ustring cp_to_utf8(char32_t cp) {
   gunichar gcp = static_cast<gunichar>(cp);
@@ -26,6 +23,7 @@ static void set_nav_button_font(Gtk::Button& b) {
   fd.set_weight(Pango::WEIGHT_HEAVY);
   fd.set_size(48 * Pango::SCALE);
 
+  // Button child is a Gtk::Label in gtkmm when using set_label()
   if (auto* child = dynamic_cast<Gtk::Label*>(b.get_child())) {
     child->override_font(fd);
   }
@@ -67,6 +65,7 @@ window, GtkWindow { background: #000000; }
 )css";
 
   if (s == Scheme::Day) {
+    // Day theme: colored squares + white glyph + white text
     css += R"css(
 .tile-icon, .tile-label, .nav { color: #f2f2f2; }
 
@@ -77,30 +76,35 @@ window, GtkWindow { background: #000000; }
   background: #2b2b2b; /* fallback */
 }
 
-/* Day background colors (extend as you like) */
-.tile-icon-box.bg-blue   { background: #1e73ff; }
-.tile-icon-box.bg-teal   { background: #00a38f; }
-.tile-icon-box.bg-green  { background: #1aa76c; }
-.tile-icon-box.bg-cyan   { background: #1fb6d5; }
-.tile-icon-box.bg-purple { background: #6a5acd; }
-.tile-icon-box.bg-indigo { background: #3f51b5; }
-.tile-icon-box.bg-gray   { background: #56616a; }
-.tile-icon-box.bg-red    { background: #d32f2f; }
-.tile-icon-box.bg-orange { background: #f57c00; }
+/* Day background colors (from your screenshots, approx) */
+.tile-icon-box.bg-azure      { background: #007ACC; } /* Freeboard/AvNav */
+.tile-icon-box.bg-blue       { background: #1976D2; } /* many blue tiles */
+.tile-icon-box.bg-teal       { background: #009688; } /* KIP/Instruments/SignalK */
+.tile-icon-box.bg-teal-light { background: #26A69A; } /* Power */
+.tile-icon-box.bg-cyan       { background: #06B6D4; } /* PyPilot */
+.tile-icon-box.bg-indigo     { background: #5C6BC0; } /* Sky/Windy/Drones */
+.tile-icon-box.bg-gray       { background: #455A64; } /* Camera/Web Cam */
+.tile-icon-box.bg-slate      { background: #556F7B; } /* Provisioning/Files */
+.tile-icon-box.bg-slate-dark { background: #546E7A; } /* Terminal/Tasks/Commands */
+.tile-icon-box.bg-purple     { background: #8E24AA; } /* Radio */
+.tile-icon-box.bg-violet     { background: #7E22CE; } /* T-Storms */
+.tile-icon-box.bg-red        { background: #DC2626; } /* Music/Video */
 )css";
   } else if (s == Scheme::Dusk) {
+    // Dusk: monochrome white/gray on dark background
     css += R"css(
 .tile-icon { color: #e6e6e6; }
 .tile-label, .nav { color: #c8c8c8; }
 
-/* keep layout stable, but remove colored squares */
+/* keep layout stable but no colored squares */
 .tile-icon-box {
   background: transparent;
   padding: 14px;
   border-radius: 16px;
 }
 )css";
-  } else { // Night
+  } else {
+    // Night: red monochrome on dark background
     css += R"css(
 .tile-icon, .tile-label, .nav { color: #d00000; }
 
@@ -130,12 +134,6 @@ void MainWindow::refresh_scheme_buttons() {
 void MainWindow::set_scheme(Scheme s) {
   scheme_ = s;
   css_provider_->load_from_data(build_css(scheme_));
-
-  // If fonts were registered at runtime, this helps Pango notice
-  if (auto fm = Pango::CairoFontMap::get_default()) {
-    fm->changed();
-  }
-
   refresh_scheme_buttons();
 }
 
@@ -145,10 +143,11 @@ MainWindow::MainWindow() {
 
   apply_css_provider_once();
 
-  // Stack
+  // Stack transition
   stack_.set_transition_type(Gtk::STACK_TRANSITION_TYPE_SLIDE_LEFT_RIGHT);
   stack_.set_transition_duration(250);
 
+  // Pages
   auto* p1 = Gtk::manage(new Desktop(PAGE1));
   auto* p2 = Gtk::manage(new Desktop(PAGE2));
   stack_.add(*p1, "page1");
@@ -168,14 +167,13 @@ MainWindow::MainWindow() {
   root_.pack_start(stack_, Gtk::PACK_EXPAND_WIDGET);
   root_.pack_start(btn_right_, Gtk::PACK_SHRINK, 18);
 
-  // === Bottom-left scheme buttons (three small icons) ===
+  // Bottom-left scheme buttons
   scheme_bar_.set_spacing(10);
   scheme_bar_.set_halign(Gtk::ALIGN_START);
   scheme_bar_.set_valign(Gtk::ALIGN_END);
   scheme_bar_.set_margin_start(22);
   scheme_bar_.set_margin_bottom(18);
 
-  // Use Unicode for reliability (you can replace with FA if you prefer)
   scheme_day_.set_label("☀");
   scheme_dusk_.set_label("☼");
   scheme_night_.set_label("☾");
@@ -197,15 +195,15 @@ MainWindow::MainWindow() {
   scheme_bar_.pack_start(scheme_dusk_, Gtk::PACK_SHRINK);
   scheme_bar_.pack_start(scheme_night_, Gtk::PACK_SHRINK);
 
-  // Overlay: main content + bottom-left scheme bar
+  // Overlay: main content + scheme bar pinned to bottom-left
   overlay_.add(root_);
   overlay_.add_overlay(scheme_bar_);
   add(overlay_);
 
-  // Keys (Left/Right, PageUp/PageDown) + optional 1/2/3 for schemes
+  // Key handling
   signal_key_press_event().connect(sigc::mem_fun(*this, &MainWindow::on_key_press), false);
 
-  // Apply defaults
+  // Default scheme + show
   set_scheme(Scheme::Day);
   show_all();
   show_page("page1");
@@ -234,7 +232,7 @@ bool MainWindow::on_key_press(GdkEventKey* e) {
       show_page("page1");
       return true;
 
-    // Optional: scheme hotkeys
+    // Optional scheme hotkeys
     case GDK_KEY_1:
       set_scheme(Scheme::Day);
       return true;
