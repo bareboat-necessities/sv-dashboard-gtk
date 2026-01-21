@@ -11,7 +11,7 @@ static constexpr int LABEL_PX_BASE = 20;
 static constexpr int SPACING_BASE  = 10;
 
 // Bigger square tile (scale=1)
-static constexpr int ICON_BOX_BASE = 112;
+static constexpr int ICON_BOX_BASE = 120;
 
 // Smaller glyph inside square => visible padding.
 // 0.50 is a good starting point; lower => more padding.
