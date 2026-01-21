@@ -2,6 +2,8 @@
 
 #include <gtkmm.h>
 
+class Desktop;
+
 class MainWindow : public Gtk::Window {
 public:
   MainWindow();
@@ -19,9 +21,13 @@ private:
 
   bool on_key_press(GdkEventKey* e);
 
-  // NEW: one handler catches mouse + touch events for swipe/drag
+  // Swipe/drag
   bool on_any_event(GdkEvent* e);
   void handle_swipe_delta(double dx, double dy, guint32 dt_ms);
+
+  // NEW: scaling
+  void on_size_allocate_custom(Gtk::Allocation& alloc);
+  void apply_ui_scale(int w, int h);
 
   // Layout
   Gtk::Overlay overlay_;
@@ -30,6 +36,10 @@ private:
   Gtk::Stack   stack_;
   Gtk::Button  btn_left_;
   Gtk::Button  btn_right_;
+
+  // Pages (we need pointers to rescale them)
+  Desktop* page1_ = nullptr;
+  Desktop* page2_ = nullptr;
 
   // Bottom-left scheme buttons
   Gtk::Box     scheme_bar_{Gtk::ORIENTATION_HORIZONTAL};
@@ -42,9 +52,13 @@ private:
 
   Scheme scheme_ = Scheme::Day;
 
-  // ---- Swipe state ----
+  // UI scale state
+  double ui_scale_ = 1.0;
+  bool show_labels_ = true;
+
+  // Swipe state
   bool    swipe_tracking_ = false;
-  bool    swipe_locked_   = false;   // once we detect a real drag, we "own" the gesture
+  bool    swipe_locked_   = false;
   double  swipe_start_x_  = 0.0;
   double  swipe_start_y_  = 0.0;
   double  swipe_last_x_   = 0.0;
@@ -52,8 +66,8 @@ private:
   guint32 swipe_start_t_  = 0;
 
   // thresholds
-  static constexpr double  kSwipeLockPx      = 18.0;   // start treating as drag
-  static constexpr double  kSwipeMinPx       = 120.0;  // switch pages if dx beyond this
-  static constexpr double  kSwipeFastMinPx   = 70.0;   // or smaller + fast
-  static constexpr guint32 kSwipeFastMaxMs   = 260;    // fast swipe time window
+  static constexpr double  kSwipeLockPx      = 18.0;
+  static constexpr double  kSwipeMinPx       = 120.0;
+  static constexpr double  kSwipeFastMinPx   = 70.0;
+  static constexpr guint32 kSwipeFastMaxMs   = 260;
 };
