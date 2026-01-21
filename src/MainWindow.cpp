@@ -29,6 +29,23 @@ static void set_nav_button_font(Gtk::Button& b) {
   }
 }
 
+static void set_scheme_button_font(Gtk::Button& b) {
+  // Visual style
+  b.set_relief(Gtk::RELIEF_NONE);
+  b.set_can_focus(false);
+  b.get_style_context()->add_class("scheme-btn");
+
+  // Big, bold Font Awesome
+  Pango::FontDescription fd;
+  fd.set_family(FontRegistry::kFamilyFree);
+  fd.set_weight(Pango::WEIGHT_HEAVY);
+  fd.set_size(30 * Pango::SCALE);   // <-- increase if you want bigger (e.g. 34)
+
+  if (auto* child = dynamic_cast<Gtk::Label*>(b.get_child())) {
+    child->override_font(fd);
+  }
+}
+
 void MainWindow::apply_css_provider_once() {
   css_provider_ = Gtk::CssProvider::create();
 
@@ -51,9 +68,9 @@ window, GtkWindow { background: #000000; }
   background: transparent;
   border: none;
   box-shadow: none;
-  padding: 0 8px;
+  padding: 6px 14px;     /* bigger hit target */
+  margin-right: 6px;
 }
-.scheme-btn label { font-size: 18px; }
 .scheme-btn:focus { outline: none; }
 
 .scheme-day   { color: #d4b000; }  /* gold */
@@ -174,15 +191,14 @@ MainWindow::MainWindow() {
   scheme_bar_.set_margin_start(22);
   scheme_bar_.set_margin_bottom(18);
 
-  scheme_day_.set_label("☀");
-  scheme_dusk_.set_label("☼");
-  scheme_night_.set_label("☾");
+  scheme_day_.set_label(cp_to_utf8(U'\uf185'));   // fa-sun
+  scheme_dusk_.set_label(cp_to_utf8(U'\uf6c4'));  // fa-cloud-sun
+  scheme_night_.set_label(cp_to_utf8(U'\uf186')); // fa-moon
 
-  for (Gtk::Button* b : { &scheme_day_, &scheme_dusk_, &scheme_night_ }) {
-    b->set_relief(Gtk::RELIEF_NONE);
-    b->set_can_focus(false);
-    b->get_style_context()->add_class("scheme-btn");
-  }
+  set_scheme_button_font(scheme_day_);
+  set_scheme_button_font(scheme_dusk_);
+  set_scheme_button_font(scheme_night_);
+
   scheme_day_.get_style_context()->add_class("scheme-day");
   scheme_dusk_.get_style_context()->add_class("scheme-dusk");
   scheme_night_.get_style_context()->add_class("scheme-night");
