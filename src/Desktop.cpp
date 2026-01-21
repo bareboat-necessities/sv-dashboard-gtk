@@ -1,61 +1,107 @@
-#include "Desktop.h"
 #include "DesktopIcon.h"
+#include "FontRegistry.h"
 
 #include <cmath>
 
-static constexpr int MARGIN_BASE = 40;
-static constexpr int ROW_SP_BASE = 30;
-static constexpr int COL_SP_BASE = 55;
+static constexpr int ICON_PX_BASE       = 56;
+static constexpr int LABEL_PX_BASE      = 20;
+static constexpr int SPACING_BASE       = 10;
 
-Desktop::Desktop(const std::vector<IconSpec>& icons)
-: Gtk::Box(Gtk::ORIENTATION_VERTICAL)
+// This defines the *square* icon background size (independent of glyph width).
+// Choose something that looks right for 56px icons.
+static constexpr int ICON_BOX_PX_BASE   = 88;  // ~56 + margins inside the square
+
+Glib::ustring DesktopIcon::to_utf8(char32_t cp) {
+  gunichar gcp = static_cast<gunichar>(cp);
+  gchar buf[8] = {0};
+  const int len = g_unichar_to_utf8(gcp, buf);
+  buf[len] = '\0';
+  return Glib::ustring(buf);
+}
+
+DesktopIcon::DesktopIcon(const IconSpec& spec)
+: icon_(to_utf8(spec.codepoint)),
+  text_(spec.label),
+  is_brand_(spec.isBrand)
 {
-  grid_.set_row_homogeneous(true);
-  grid_.set_column_homogeneous(true);
+  set_relief(Gtk::RELIEF_NONE);
+  set_can_focus(false);
+  get_style_context()->add_class("tile");
 
-  grid_.set_halign(Gtk::ALIGN_CENTER);
-  grid_.set_valign(Gtk::ALIGN_CENTER);
+  box_.set_halign(Gtk::ALIGN_CENTER);
+  box_.set_valign(Gtk::ALIGN_CENTER);
 
-  for (int i = 0; i < (int)icons.size(); ++i) {
-    const int r = i / kCols;
-    const int c = i % kCols;
+  icon_.set_halign(Gtk::ALIGN_CENTER);
+  icon_.set_valign(Gtk::ALIGN_CENTER);
 
-    auto* tile = Gtk::manage(new DesktopIcon(icons.at(i)));
-    grid_.attach(*tile, c, r, 1, 1);
+  text_.set_halign(Gtk::ALIGN_CENTER);
+  text_.set_valign(Gtk::ALIGN_CENTER);
+
+  // Label gets text color class
+  icon_.get_style_context()->add_class("tile-icon");
+  text_.get_style_context()->add_class("tile-label");
+
+  // NEW: square container gets the background/color classes
+  icon_box_.set_visible_window(true);     // required to draw background
+  icon_box_.set_above_child(false);
+  icon_box_.set_halign(Gtk::ALIGN_CENTER);
+  icon_box_.set_valign(Gtk::ALIGN_CENTER);
+  icon_box_.get_style_context()->add_class("tile-icon-box");
+  if (spec.colorClass) {
+    icon_box_.get_style_context()->add_class(spec.colorClass);
   }
 
-  pack_start(grid_, Gtk::PACK_EXPAND_WIDGET);
+  icon_box_.add(icon_);
 
-  // Default (will be overridden by MainWindow on first size-allocate)
+  box_.pack_start(icon_box_, Gtk::PACK_SHRINK);
+  box_.pack_start(text_, Gtk::PACK_SHRINK);
+  add(box_);
+
+  // Default scale (overridden by MainWindow)
   set_ui_scale(1.0, true);
+
+  signal_clicked().connect([label = spec.label] {
+    (void)label;
+    // hook launcher action here
+  });
 
   show_all_children();
 }
 
-void Desktop::set_ui_scale(double s, bool show_labels) {
-  // Avoid thrashing
-  if (last_s_ > 0 && std::fabs(s - last_s_) < 0.02 && show_labels == last_show_labels_) {
-    return;
+void DesktopIcon::apply_fonts(double s) {
+  const int icon_px  = std::max(10, (int)std::lround(ICON_PX_BASE  * s));
+  const int label_px = std::max(6,  (int)std::lround(LABEL_PX_BASE * s));
+
+  Pango::FontDescription fa;
+  if (is_brand_) {
+    fa.set_family(FontRegistry::kFamilyBrands);
+    fa.set_weight(Pango::WEIGHT_NORMAL);
+  } else {
+    fa.set_family(FontRegistry::kFamilyFree);
+    fa.set_weight(Pango::WEIGHT_HEAVY);
   }
-  last_s_ = s;
-  last_show_labels_ = show_labels;
+  fa.set_size(icon_px * Pango::SCALE);
+  icon_.override_font(fa);
 
-  const int m  = std::max(2, (int)std::lround(MARGIN_BASE * s));
-  const int rs = std::max(1, (int)std::lround(ROW_SP_BASE * s));
-  const int cs = std::max(1, (int)std::lround(COL_SP_BASE * s));
+  Pango::FontDescription txt;
+  txt.set_family("Sans");
+  txt.set_size(label_px * Pango::SCALE);
+  text_.override_font(txt);
 
-  set_margin_start(m);
-  set_margin_end(m);
-  set_margin_top(m);
-  set_margin_bottom(m);
+  // Force a *square* icon background; independent of glyph width.
+  // Ensure it never goes below the icon’s height (avoid clipping).
+  const int box_px = std::max(
+      (int)std::lround(ICON_BOX_PX_BASE * s),
+      icon_px + std::max(8, (int)std::lround(18 * s))
+  );
+  icon_box_.set_size_request(box_px, box_px);
+}
 
-  grid_.set_row_spacing(rs);
-  grid_.set_column_spacing(cs);
+void DesktopIcon::set_ui_scale(double s, bool show_label) {
+  const int sp = std::max(1, (int)std::lround(SPACING_BASE * s));
+  box_.set_spacing(sp);
 
-  // Forward scale to each icon
-  for (auto* w : grid_.get_children()) {
-    if (auto* icon = dynamic_cast<DesktopIcon*>(w)) {
-      icon->set_ui_scale(s, show_labels);
-    }
-  }
+  text_.set_visible(show_label);
+
+  apply_fonts(s);
 }
