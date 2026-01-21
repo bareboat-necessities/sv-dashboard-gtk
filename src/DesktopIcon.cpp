@@ -15,7 +15,7 @@ static constexpr int ICON_BOX_BASE = 120;
 
 // Smaller glyph inside square => visible padding.
 // 0.50 is a good starting point; lower => more padding.
-static constexpr double ICON_FRACTION = 0.46;
+static constexpr double ICON_FRACTION = 0.42;
 
 Glib::ustring DesktopIcon::to_utf8(char32_t cp) {
   gunichar gcp = static_cast<gunichar>(cp);
