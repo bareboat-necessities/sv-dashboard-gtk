@@ -21,13 +21,13 @@ private:
 
   bool on_key_press(GdkEventKey* e);
 
-  // Swipe/drag
-  bool on_any_event(GdkEvent* e);
-  void handle_swipe_delta(double dx, double dy, guint32 dt_ms);
-
-  // NEW: scaling
+  // Scaling
   void on_size_allocate_custom(Gtk::Allocation& alloc);
   void apply_ui_scale(int w, int h);
+
+  // NEW: gesture-based swipe/drag
+  void setup_gestures();
+  void handle_swipe_delta(double dx, double dy, guint32 dt_ms);
 
   // Layout
   Gtk::Overlay overlay_;
@@ -37,7 +37,6 @@ private:
   Gtk::Button  btn_left_;
   Gtk::Button  btn_right_;
 
-  // Pages (we need pointers to rescale them)
   Desktop* page1_ = nullptr;
   Desktop* page2_ = nullptr;
 
@@ -47,7 +46,6 @@ private:
   Gtk::Button  scheme_dusk_;
   Gtk::Button  scheme_night_;
 
-  // One provider, reloaded on scheme change
   Glib::RefPtr<Gtk::CssProvider> css_provider_;
 
   Scheme scheme_ = Scheme::Day;
@@ -56,18 +54,14 @@ private:
   double ui_scale_ = 1.0;
   bool show_labels_ = true;
 
-  // Swipe state
-  bool    swipe_tracking_ = false;
-  bool    swipe_locked_   = false;
-  double  swipe_start_x_  = 0.0;
-  double  swipe_start_y_  = 0.0;
-  double  swipe_last_x_   = 0.0;
-  double  swipe_last_y_   = 0.0;
-  guint32 swipe_start_t_  = 0;
+  // Gesture state
+  Glib::RefPtr<Gtk::GestureDrag> drag_;
+  bool   drag_claimed_ = false;
+  gint64 drag_t0_us_ = 0;
 
   // thresholds
-  static constexpr double  kSwipeLockPx      = 18.0;
-  static constexpr double  kSwipeMinPx       = 120.0;
-  static constexpr double  kSwipeFastMinPx   = 70.0;
-  static constexpr guint32 kSwipeFastMaxMs   = 260;
+  static constexpr double  kSwipeLockPx      = 18.0;   // claim gesture when beyond this
+  static constexpr double  kSwipeMinPx       = 120.0;  // switch if dx beyond this
+  static constexpr double  kSwipeFastMinPx   = 70.0;   // or smaller + fast
+  static constexpr guint32 kSwipeFastMaxMs   = 260;    // fast swipe window
 };
