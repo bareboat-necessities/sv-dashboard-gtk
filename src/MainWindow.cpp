@@ -4,9 +4,10 @@
 #include "FontRegistry.h"
 
 #include <gdk/gdkkeysyms.h>
-#include <gtk/gtk.h>
+#include <gtk/gtk.h>   // gtk_gesture_set_state
 #include <cmath>
 #include <string>
+#include <vector>
 
 static Glib::ustring cp_to_utf8(char32_t cp) {
   gunichar gcp = static_cast<gunichar>(cp);
@@ -16,13 +17,27 @@ static Glib::ustring cp_to_utf8(char32_t cp) {
   return Glib::ustring(buf);
 }
 
+// GTK3 often wraps button labels (Alignment -> Label). This finds the label reliably.
+static Gtk::Label* find_label(Gtk::Widget* w) {
+  if (!w) return nullptr;
+  if (auto* l = dynamic_cast<Gtk::Label*>(w)) return l;
+
+  if (auto* c = dynamic_cast<Gtk::Container*>(w)) {
+    auto kids = c->get_children();
+    for (auto* k : kids) {
+      if (auto* r = find_label(k)) return r;
+    }
+  }
+  return nullptr;
+}
+
 static void set_button_fa_font(Gtk::Button& b, int px, bool heavy = true) {
   Pango::FontDescription fd;
   fd.set_family(FontRegistry::kFamilyFree);
   fd.set_weight(heavy ? Pango::WEIGHT_HEAVY : Pango::WEIGHT_NORMAL);
   fd.set_size(px * Pango::SCALE);
 
-  if (auto* child = dynamic_cast<Gtk::Label*>(b.get_child())) {
+  if (auto* child = find_label(b.get_child())) {
     child->override_font(fd);
   }
 }
@@ -41,13 +56,11 @@ Glib::ustring MainWindow::build_css(Scheme s) const {
   const int scheme_pad_h = std::max(2, (int)std::lround(14 * ui_scale_));
   const int scheme_mr    = std::max(0, (int)std::lround(6  * ui_scale_));
 
-  // Icon square corner radius scales
   const int icon_radius  = std::max(3, (int)std::lround(16 * ui_scale_));
 
   std::string css;
   css += "window, GtkWindow { background: #000000; }\n";
   css += ".tile { background: transparent; border: none; box-shadow: none; padding: 0; }\n";
-  css += ".tile-icon, .tile-label, .nav { }\n";
 
   css += ".scheme-btn { background: transparent; border: none; box-shadow: none; ";
   css += "padding: " + itos(scheme_pad_v) + "px " + itos(scheme_pad_h) + "px; ";
@@ -63,9 +76,8 @@ Glib::ustring MainWindow::build_css(Scheme s) const {
   if (s == Scheme::Day) {
     css += ".tile-icon, .tile-label, .nav { color: #f2f2f2; }\n";
 
-    // IMPORTANT: no padding here; size is enforced in C++ (square).
-    css += ".tile-icon-box { color:#ffffff; border-radius:" + itos(icon_radius) + "px; ";
-    css += "background:#2b2b2b; }\n";
+    // IMPORTANT: no padding here; the square size is controlled in DesktopIcon.cpp
+    css += ".tile-icon-box { background:#2b2b2b; color:#ffffff; border-radius:" + itos(icon_radius) + "px; }\n";
 
     css += ".tile-icon-box.bg-azure      { background:#007ACC; }\n";
     css += ".tile-icon-box.bg-blue       { background:#1976D2; }\n";
@@ -113,17 +125,20 @@ void MainWindow::apply_ui_scale(int w, int h) {
   constexpr double base_h = 800.0;
 
   double s = std::min(w / base_w, h / base_h);
-  s = std::max(0.12, std::min(1.0, s));
+  // allow to go smaller than before
+  s = std::max(0.06, std::min(1.0, s));
 
   const bool want_labels = (h >= 260) && (s >= 0.33);
 
-  if (std::fabs(s - ui_scale_) < 0.02 && want_labels == show_labels_) return;
+  // Update even for small changes so tiny-window resizing keeps reacting
+  if (std::fabs(s - ui_scale_) < 0.005 && want_labels == show_labels_) return;
 
   ui_scale_ = s;
   show_labels_ = want_labels;
 
   root_.set_spacing(std::max(0, (int)std::lround(8 * ui_scale_)));
 
+  // Hide nav at very small widths to make 320x200 achievable
   const bool tiny = (w <= 420);
   btn_left_.set_visible(!tiny);
   btn_right_.set_visible(!tiny);
@@ -134,14 +149,12 @@ void MainWindow::apply_ui_scale(int w, int h) {
   btn_right_.set_margin_start(pad);
   btn_right_.set_margin_end(pad);
 
-  const int nav_px = std::max(12, (int)std::lround(48 * ui_scale_));
-
-  // IMPORTANT: allow them to shrink (previously clamped too high).
-  const int scheme_px = std::max(10, (int)std::lround(36 * ui_scale_));
+  const int nav_px    = std::max(10, (int)std::lround(48 * ui_scale_));
+  // Theme icons MUST shrink -> low minimum
+  const int scheme_px = std::max(6,  (int)std::lround(34 * ui_scale_));
 
   set_button_fa_font(btn_left_,  nav_px, true);
   set_button_fa_font(btn_right_, nav_px, true);
-
   set_button_fa_font(scheme_day_,   scheme_px, true);
   set_button_fa_font(scheme_dusk_,  scheme_px, true);
   set_button_fa_font(scheme_night_, scheme_px, true);
@@ -158,5 +171,163 @@ void MainWindow::apply_ui_scale(int w, int h) {
   queue_resize();
 }
 
-// --- the rest of your MainWindow.cpp remains unchanged ---
-// (gestures, constructor wiring, show_page, refresh_nav, on_key_press, etc.)
+void MainWindow::on_overlay_size_allocate(Gtk::Allocation& alloc) {
+  apply_ui_scale(alloc.get_width(), alloc.get_height());
+}
+
+void MainWindow::handle_swipe_delta(double dx, double dy, guint32 dt_ms) {
+  if (std::fabs(dx) < kSwipeMinPx) {
+    if (!(std::fabs(dx) >= kSwipeFastMinPx && dt_ms <= kSwipeFastMaxMs)) return;
+  }
+  if (std::fabs(dx) < std::fabs(dy) * 1.2) return;
+
+  const auto name = stack_.get_visible_child_name();
+  if (dx < 0) {
+    if (name == "page1") show_page("page2");
+  } else {
+    if (name == "page2") show_page("page1");
+  }
+}
+
+void MainWindow::setup_gestures() {
+  drag_ = Gtk::GestureDrag::create(swipe_box_);
+  drag_->set_touch_only(false);
+
+  drag_->signal_drag_begin().connect([this](double, double) {
+    drag_claimed_ = false;
+    drag_t0_us_ = g_get_monotonic_time();
+  });
+
+  drag_->signal_drag_update().connect([this](double dx, double dy) {
+    if (!drag_claimed_) {
+      if (std::fabs(dx) >= kSwipeLockPx && std::fabs(dx) > std::fabs(dy) * 1.1) {
+        drag_claimed_ = true;
+        gtk_gesture_set_state(GTK_GESTURE(drag_->gobj()), GTK_EVENT_SEQUENCE_CLAIMED);
+      }
+    }
+  });
+
+  drag_->signal_drag_end().connect([this](double dx, double dy) {
+    const gint64 t1_us = g_get_monotonic_time();
+    const guint32 dt_ms = (t1_us > drag_t0_us_) ? (guint32)((t1_us - drag_t0_us_) / 1000) : 0;
+    handle_swipe_delta(dx, dy, dt_ms);
+    drag_claimed_ = false;
+  });
+}
+
+MainWindow::MainWindow() {
+  set_title("BBN Launcher");
+  set_default_size(1400, 800);
+
+  apply_css_provider_once();
+
+  stack_.set_transition_type(Gtk::STACK_TRANSITION_TYPE_SLIDE_LEFT_RIGHT);
+  stack_.set_transition_duration(250);
+
+  page1_ = Gtk::manage(new Desktop(PAGE1));
+  page2_ = Gtk::manage(new Desktop(PAGE2));
+  stack_.add(*page1_, "page1");
+  stack_.add(*page2_, "page2");
+
+  swipe_box_.set_visible_window(false);
+  swipe_box_.set_above_child(true);
+  swipe_box_.add(stack_);
+
+  btn_left_.set_label(cp_to_utf8(CHEV_LEFT));
+  btn_right_.set_label(cp_to_utf8(CHEV_RIGHT));
+  btn_left_.set_relief(Gtk::RELIEF_NONE);
+  btn_right_.set_relief(Gtk::RELIEF_NONE);
+  btn_left_.set_can_focus(false);
+  btn_right_.set_can_focus(false);
+  btn_left_.get_style_context()->add_class("nav");
+  btn_right_.get_style_context()->add_class("nav");
+  btn_left_.set_size_request(1, 1);
+  btn_right_.set_size_request(1, 1);
+
+  btn_left_.signal_clicked().connect([this] { show_page("page1"); });
+  btn_right_.signal_clicked().connect([this] { show_page("page2"); });
+
+  root_.pack_start(btn_left_, Gtk::PACK_SHRINK, 0);
+  root_.pack_start(swipe_box_, Gtk::PACK_EXPAND_WIDGET);
+  root_.pack_start(btn_right_, Gtk::PACK_SHRINK, 0);
+
+  scheme_bar_.set_halign(Gtk::ALIGN_START);
+  scheme_bar_.set_valign(Gtk::ALIGN_END);
+
+  scheme_day_.set_label(cp_to_utf8(U'\uf185'));   // sun
+  scheme_dusk_.set_label(cp_to_utf8(U'\uf6c4'));  // cloud-sun (fallback if missing: U'\uf0c2')
+  scheme_night_.set_label(cp_to_utf8(U'\uf186')); // moon
+
+  for (Gtk::Button* b : { &scheme_day_, &scheme_dusk_, &scheme_night_ }) {
+    b->set_relief(Gtk::RELIEF_NONE);
+    b->set_can_focus(false);
+    b->set_size_request(1, 1);
+    b->get_style_context()->add_class("scheme-btn");
+  }
+  scheme_day_.get_style_context()->add_class("scheme-day");
+  scheme_dusk_.get_style_context()->add_class("scheme-dusk");
+  scheme_night_.get_style_context()->add_class("scheme-night");
+
+  scheme_day_.signal_clicked().connect([this]{ set_scheme(Scheme::Day); });
+  scheme_dusk_.signal_clicked().connect([this]{ set_scheme(Scheme::Dusk); });
+  scheme_night_.signal_clicked().connect([this]{ set_scheme(Scheme::Night); });
+
+  scheme_bar_.pack_start(scheme_day_, Gtk::PACK_SHRINK);
+  scheme_bar_.pack_start(scheme_dusk_, Gtk::PACK_SHRINK);
+  scheme_bar_.pack_start(scheme_night_, Gtk::PACK_SHRINK);
+
+  overlay_.add(root_);
+  overlay_.add_overlay(scheme_bar_);
+  add(overlay_);
+
+  signal_key_press_event().connect(sigc::mem_fun(*this, &MainWindow::on_key_press), false);
+
+  // Scale based on client area
+  overlay_.signal_size_allocate().connect(sigc::mem_fun(*this, &MainWindow::on_overlay_size_allocate));
+
+  setup_gestures();
+
+  // Force an initial pass; ui_scale_ starts at -1 so it won't early-return
+  apply_ui_scale(1400, 800);
+  set_scheme(Scheme::Day);
+
+  show_all();
+  show_page("page1");
+
+  // Ensure correct sizes after realization
+  signal_realize().connect([this] {
+    auto a = overlay_.get_allocation();
+    apply_ui_scale(a.get_width(), a.get_height());
+  });
+}
+
+void MainWindow::show_page(const Glib::ustring& name) {
+  stack_.set_visible_child(name);
+  refresh_nav();
+}
+
+void MainWindow::refresh_nav() {
+  const auto name = stack_.get_visible_child_name();
+  btn_left_.set_sensitive(name != "page1");
+  btn_right_.set_sensitive(name != "page2");
+}
+
+bool MainWindow::on_key_press(GdkEventKey* e) {
+  switch (e->keyval) {
+    case GDK_KEY_Right:
+    case GDK_KEY_Page_Down:
+      show_page("page2");
+      return true;
+    case GDK_KEY_Left:
+    case GDK_KEY_Page_Up:
+      show_page("page1");
+      return true;
+
+    case GDK_KEY_1: set_scheme(Scheme::Day);   return true;
+    case GDK_KEY_2: set_scheme(Scheme::Dusk);  return true;
+    case GDK_KEY_3: set_scheme(Scheme::Night); return true;
+
+    default:
+      return false;
+  }
+}
