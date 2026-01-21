@@ -22,10 +22,10 @@ private:
   bool on_key_press(GdkEventKey* e);
 
   // Scaling
-  void on_size_allocate_custom(Gtk::Allocation& alloc);
+  void on_overlay_size_allocate(Gtk::Allocation& alloc);
   void apply_ui_scale(int w, int h);
 
-  // Swipe/drag (robust)
+  // Swipe/drag
   void setup_gestures();
   void handle_swipe_delta(double dx, double dy, guint32 dt_ms);
 
@@ -34,7 +34,7 @@ private:
   Gtk::Box     root_{Gtk::ORIENTATION_HORIZONTAL};
 
   Gtk::Stack   stack_;
-  Gtk::EventBox swipe_box_;         // NEW: captures events above child
+  Gtk::EventBox swipe_box_;
   Gtk::Button  btn_left_;
   Gtk::Button  btn_right_;
 
@@ -51,8 +51,8 @@ private:
 
   Scheme scheme_ = Scheme::Day;
 
-  // UI scale state
-  double ui_scale_ = 1.0;
+  // IMPORTANT: force first scale apply
+  double ui_scale_ = -1.0;
   bool show_labels_ = true;
 
   // Gesture state
