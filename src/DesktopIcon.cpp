@@ -1,17 +1,21 @@
 #include "DesktopIcon.h"
 #include "FontRegistry.h"
 
+#include <glib.h>
+#include <pangomm/layout.h>
+#include <pangomm/cairo.h>
+
 #include <cmath>
 
+// Text under icon
 static constexpr int LABEL_PX_BASE = 20;
 static constexpr int SPACING_BASE  = 10;
 
-// The ONLY thing that defines the icon background size (scale=1).
-// All rounded boxes will be identical because this is fixed per-scale.
+// Square icon background size at scale=1
 static constexpr int ICON_BOX_BASE = 88;
 
-// Icon takes this fraction of the box (rest is “padding” inside the square).
-static constexpr double ICON_FRACTION = 0.62;
+// Icon size relative to square (smaller => more padding). 0.58 looks like your screenshots.
+static constexpr double ICON_FRACTION = 0.58;
 
 Glib::ustring DesktopIcon::to_utf8(char32_t cp) {
   gunichar gcp = static_cast<gunichar>(cp);
@@ -21,8 +25,75 @@ Glib::ustring DesktopIcon::to_utf8(char32_t cp) {
   return Glib::ustring(buf);
 }
 
+// ---- IconCanvas ----
+
+DesktopIcon::IconCanvas::IconCanvas() {
+  set_halign(Gtk::ALIGN_CENTER);
+  set_valign(Gtk::ALIGN_CENTER);
+  set_hexpand(false);
+  set_vexpand(false);
+  get_style_context()->add_class("tile-icon-box");
+}
+
+void DesktopIcon::IconCanvas::set_glyph(const Glib::ustring& g) {
+  glyph_ = g;
+  queue_draw();
+}
+
+void DesktopIcon::IconCanvas::set_font(const Pango::FontDescription& fd) {
+  font_ = fd;
+  queue_draw();
+}
+
+void DesktopIcon::IconCanvas::set_box_px(int px) {
+  box_px_ = std::max(10, px);
+  set_size_request(box_px_, box_px_);
+  update_glyph_px_();
+  queue_draw();
+}
+
+void DesktopIcon::IconCanvas::update_glyph_px_() {
+  glyph_px_ = std::max(6, (int)std::lround(box_px_ * ICON_FRACTION));
+}
+
+bool DesktopIcon::IconCanvas::on_draw(const Cairo::RefPtr<Cairo::Context>& cr) {
+  auto sc = get_style_context();
+
+  const int w = get_allocated_width();
+  const int h = get_allocated_height();
+
+  // Draw CSS background + rounded corners from .tile-icon-box/.bg-*
+  sc->render_background(cr, 0, 0, w, h);
+
+  if (glyph_.empty())
+    return true;
+
+  // Foreground color from CSS (Day: white; Dusk: gray; Night: red)
+  const auto fg = sc->get_color(sc->get_state());
+  cr->set_source_rgba(fg.get_red(), fg.get_green(), fg.get_blue(), fg.get_alpha());
+
+  // Pango layout for the glyph
+  auto layout = create_pango_layout(glyph_);
+  Pango::FontDescription fd = font_;
+  fd.set_size(glyph_px_ * Pango::SCALE);
+  layout->set_font_description(fd);
+
+  int lw = 0, lh = 0;
+  layout->get_pixel_size(lw, lh);
+
+  const double x = (w - lw) * 0.5;
+  const double y = (h - lh) * 0.5;
+
+  cr->move_to(x, y);
+  Pango::Cairo::show_layout(cr, layout);
+
+  return true;
+}
+
+// ---- DesktopIcon ----
+
 DesktopIcon::DesktopIcon(const IconSpec& spec)
-: icon_(to_utf8(spec.codepoint)),
+: icon_box_(),
   text_(spec.label),
   is_brand_(spec.isBrand)
 {
@@ -33,22 +104,11 @@ DesktopIcon::DesktopIcon(const IconSpec& spec)
   box_.set_halign(Gtk::ALIGN_CENTER);
   box_.set_valign(Gtk::ALIGN_CENTER);
 
-  icon_.set_halign(Gtk::ALIGN_CENTER);
-  icon_.set_valign(Gtk::ALIGN_CENTER);
   text_.set_halign(Gtk::ALIGN_CENTER);
   text_.set_valign(Gtk::ALIGN_CENTER);
-
-  icon_.get_style_context()->add_class("tile-icon");
   text_.get_style_context()->add_class("tile-label");
 
-  // Square background container
-  icon_box_.set_visible_window(true);
-  icon_box_.set_halign(Gtk::ALIGN_CENTER);
-  icon_box_.set_valign(Gtk::ALIGN_CENTER);
-  icon_box_.set_hexpand(false);
-  icon_box_.set_vexpand(false);
-  icon_box_.get_style_context()->add_class("tile-icon-box");
-  icon_box_.add(icon_);
+  icon_box_.set_glyph(to_utf8(spec.codepoint));
 
   box_.pack_start(icon_box_, Gtk::PACK_SHRINK);
   box_.pack_start(text_, Gtk::PACK_SHRINK);
@@ -68,22 +128,15 @@ void DesktopIcon::set_color_class(const std::string& cls) {
   if (!color_class_.empty()) {
     icon_box_.get_style_context()->add_class(color_class_);
   }
+  icon_box_.queue_draw();
 }
 
 void DesktopIcon::apply_fonts(double s) {
-  // 1) Compute square box size ONLY from scale (identical for all tiles).
-  const int box_px = std::max(18, (int)std::lround(ICON_BOX_BASE * s));
-  icon_box_.set_size_request(box_px, box_px);
+  // EXACT square size for every icon
+  const int box_px = std::max(12, (int)std::lround(ICON_BOX_BASE * s));
+  icon_box_.set_box_px(box_px);
 
-  // 2) Compute icon font size from the square (not from glyph metrics).
-  const int icon_px = std::max(8, (int)std::lround(box_px * ICON_FRACTION));
-
-  // Center the glyph; do NOT use margins that could change requested size.
-  icon_.set_margin_top(0);
-  icon_.set_margin_bottom(0);
-  icon_.set_margin_start(0);
-  icon_.set_margin_end(0);
-
+  // Font family/weight for FA6
   Pango::FontDescription fa;
   if (is_brand_) {
     fa.set_family(FontRegistry::kFamilyBrands);
@@ -92,8 +145,7 @@ void DesktopIcon::apply_fonts(double s) {
     fa.set_family(FontRegistry::kFamilyFree);
     fa.set_weight(Pango::WEIGHT_HEAVY);
   }
-  fa.set_size(icon_px * Pango::SCALE);
-  icon_.override_font(fa);
+  icon_box_.set_font(fa);
 
   const int label_px = std::max(6, (int)std::lround(LABEL_PX_BASE * s));
   Pango::FontDescription txt;
