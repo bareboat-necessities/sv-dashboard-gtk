@@ -32,3 +32,6 @@ executable('sv-dashboard',
 install_subdir('assets/fonts',
   install_dir: join_paths(get_option('datadir'), 'sv-dashboard-gtk', 'fonts'),
   strip_directory: true)
+
+install_data('assets/icons.json',
+  install_dir: join_paths(get_option('datadir'), 'sv-dashboard-gtk'))
