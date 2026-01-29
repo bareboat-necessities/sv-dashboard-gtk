@@ -254,6 +254,17 @@ IconConfig load_icon_config() {
   }
 
   if (!g_file_test(config_path.c_str(), G_FILE_TEST_EXISTS)) {
+    const gchar* const* data_dirs = g_get_system_data_dirs();
+    for (size_t i = 0; data_dirs && data_dirs[i]; ++i) {
+      std::string fallback = std::string(data_dirs[i]) + "/sv-dashboard-gtk/icons.json";
+      if (g_file_test(fallback.c_str(), G_FILE_TEST_EXISTS)) {
+        config_path = fallback;
+        break;
+      }
+    }
+  }
+
+  if (!g_file_test(config_path.c_str(), G_FILE_TEST_EXISTS)) {
     return default_icon_config();
   }
 

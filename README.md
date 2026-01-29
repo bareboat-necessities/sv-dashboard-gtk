@@ -24,4 +24,4 @@ meson compile -C build
 ```
 
 ## Icon configuration
-The launcher reads JSON config from `~/.config/sv-dashboard-gtk/icons.json` by default (or the path in `SV_DASHBOARD_CONFIG`). A sample config matching the BBN launcher format is in `assets/icons.json` for reference/copying. The `fa` field is required and should be a Font Awesome icon name.
+The launcher reads JSON config from `~/.config/sv-dashboard-gtk/icons.json` by default (or the path in `SV_DASHBOARD_CONFIG`). If that file is missing, it falls back to the packaged `icons.json` installed under `share/sv-dashboard-gtk/icons.json` so a default layout is shown. A sample config matching the BBN launcher format is in `assets/icons.json` for reference/copying. The `fa` field is required and should be a Font Awesome icon name.
