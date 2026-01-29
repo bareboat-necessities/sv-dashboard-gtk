@@ -1,6 +1,9 @@
 #pragma once
 
 #include <gtkmm.h>
+#include <string>
+#include <utility>
+#include <vector>
 
 class Desktop;
 
@@ -37,6 +40,7 @@ private:
 
   Desktop* page1_ = nullptr;
   Desktop* page2_ = nullptr;
+  std::vector<std::pair<std::string, std::string>> palette_;
 
   Gtk::Box     scheme_bar_{Gtk::ORIENTATION_HORIZONTAL};
   Gtk::Button  scheme_day_;
