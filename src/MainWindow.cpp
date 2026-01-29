@@ -79,18 +79,9 @@ Glib::ustring MainWindow::build_css(Scheme s) const {
     // Icon color + background are on tile-icon-box now
     css += ".tile-icon-box { background:#2b2b2b; color:#ffffff; border-radius:" + itos(icon_radius) + "px; }\n";
 
-    css += ".tile-icon-box.bg-azure      { background:#007ACC; }\n";
-    css += ".tile-icon-box.bg-blue       { background:#1976D2; }\n";
-    css += ".tile-icon-box.bg-teal       { background:#009688; }\n";
-    css += ".tile-icon-box.bg-teal-light { background:#26A69A; }\n";
-    css += ".tile-icon-box.bg-cyan       { background:#06B6D4; }\n";
-    css += ".tile-icon-box.bg-indigo     { background:#5C6BC0; }\n";
-    css += ".tile-icon-box.bg-gray       { background:#455A64; }\n";
-    css += ".tile-icon-box.bg-slate      { background:#556F7B; }\n";
-    css += ".tile-icon-box.bg-slate-dark { background:#546E7A; }\n";
-    css += ".tile-icon-box.bg-purple     { background:#8E24AA; }\n";
-    css += ".tile-icon-box.bg-violet     { background:#7E22CE; }\n";
-    css += ".tile-icon-box.bg-red        { background:#DC2626; }\n";
+    for (const auto& entry : palette_) {
+      css += ".tile-icon-box." + entry.first + " { background:" + entry.second + "; }\n";
+    }
 
   } else if (s == Scheme::Dusk) {
     css += ".tile-label, .nav { color:#c8c8c8; }\n";
@@ -223,8 +214,10 @@ MainWindow::MainWindow() {
   stack_.set_transition_type(Gtk::STACK_TRANSITION_TYPE_SLIDE_LEFT_RIGHT);
   stack_.set_transition_duration(250);
 
-  page1_ = Gtk::manage(new Desktop(PAGE1));
-  page2_ = Gtk::manage(new Desktop(PAGE2));
+  auto config = load_icon_config();
+  palette_ = config.palette;
+  page1_ = Gtk::manage(new Desktop(config.page1));
+  page2_ = Gtk::manage(new Desktop(config.page2));
   stack_.add(*page1_, "page1");
   stack_.add(*page2_, "page2");
 

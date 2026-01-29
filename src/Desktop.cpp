@@ -1,53 +1,61 @@
 #include "Desktop.h"
 #include "DesktopIcon.h"
 
-#include <unordered_map>
 #include <string>
+#include <utility>
 #include <cmath>
+#include <vector>
 
-static const char* color_for_label(const std::string& label) {
-  // Palette classes must exist in MainWindow CSS (Day scheme).
-  static const std::unordered_map<std::string, const char*> m = {
-    {"Freeboard",    "bg-azure"},
-    {"Sky",          "bg-cyan"},
-    {"Moorings",     "bg-indigo"},
-    {"Provisioning", "bg-teal"},
-    {"AvNav",        "bg-purple"},
+#include <glib.h>
 
-    {"Vessel",       "bg-blue"},
-    {"SignalK",      "bg-slate"},
-    {"Terminal",     "bg-gray"},
-    {"Tasks",        "bg-slate-dark"},
-    {"Files",        "bg-gray"},
+namespace {
 
-    {"Radio",        "bg-indigo"},
-    {"Drones",       "bg-cyan"},
-    {"Web Cam",      "bg-blue"},
-    {"Messenger",    "bg-purple"},
-    {"Social",       "bg-red"},
+std::vector<std::string> build_command_argv(const IconSpec& spec) {
+  std::string cmd = spec.command;
+  std::vector<std::string> args = spec.args;
 
-    {"OpenCPN",      "bg-azure"},
-    {"KIP",          "bg-indigo"},
-    {"Power",        "bg-teal-light"},
-    {"GRIB",         "bg-cyan"},
-    {"Camera",       "bg-blue"},
+  if (cmd == "onlyone") {
+    if (args.empty()) return {};
+    cmd = args.front();
+    args.erase(args.begin());
+  }
 
-    {"qtVlm",        "bg-azure"},
-    {"Instruments",  "bg-indigo"},
-    {"PyPilot",      "bg-teal"},
-    {"Windy",        "bg-cyan"},
-    {"Email",        "bg-red"},
+  if (cmd.empty()) return {};
 
-    {"Music",        "bg-purple"},
-    {"Video",        "bg-red"},
-    {"Commands",     "bg-slate"},
-    {"T-Storms",     "bg-indigo"},
-    {"Chrome",       "bg-blue"},
-  };
-
-  auto it = m.find(label);
-  return (it != m.end()) ? it->second : "bg-gray";
+  std::vector<std::string> argv;
+  argv.reserve(1 + args.size());
+  argv.push_back(cmd);
+  argv.insert(argv.end(), args.begin(), args.end());
+  return argv;
 }
+
+void launch_command(const IconSpec& spec) {
+  auto argv_strings = build_command_argv(spec);
+  if (argv_strings.empty()) return;
+
+  std::vector<char*> argv;
+  argv.reserve(argv_strings.size() + 1);
+  for (auto& arg : argv_strings) {
+    argv.push_back(const_cast<char*>(arg.c_str()));
+  }
+  argv.push_back(nullptr);
+
+  GError* error = nullptr;
+  g_spawn_async(nullptr,
+                argv.data(),
+                nullptr,
+                G_SPAWN_SEARCH_PATH,
+                nullptr,
+                nullptr,
+                nullptr,
+                &error);
+  if (error) {
+    g_warning("Failed to launch command: %s", error->message);
+    g_error_free(error);
+  }
+}
+
+} // namespace
 
 Desktop::Desktop(const std::vector<IconSpec>& icons)
 : Gtk::Box(Gtk::ORIENTATION_VERTICAL)
@@ -63,8 +71,10 @@ Desktop::Desktop(const std::vector<IconSpec>& icons)
     const int r = i / kCols;
     const int c = i % kCols;
 
-    auto* tile = Gtk::manage(new DesktopIcon(icons.at(i)));
-    tile->set_color_class(color_for_label(icons.at(i).label));
+    const auto& spec = icons.at(i);
+    auto* tile = Gtk::manage(new DesktopIcon(spec));
+    tile->set_color_class(spec.colorClass);
+    tile->signal_clicked().connect([spec] { launch_command(spec); });
     tiles_.push_back(tile);
 
     grid_.attach(*tile, c, r, 1, 1);

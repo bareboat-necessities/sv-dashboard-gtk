@@ -1,0 +1,402 @@
+{
+  "commands1": [
+    {
+      "name": "chart",
+      "title": "Chart",
+      "bg": "Peru",
+      "cmd": "onlyone",
+      "args": [
+        "/usr/bin/opencpn",
+        "-l=error"
+      ],
+      "fa": "chart-area"
+    },
+    {
+      "name": "instruments",
+      "title": "Instruments",
+      "bg": "SeaGreen",
+      "cmd": "gtk-launch",
+      "args": [
+        "boatinstrument"
+      ],
+      "fa": "tachometer-alt"
+    },
+    {
+      "name": "autopilot",
+      "title": "Autopilot",
+      "bg": "IndianRed",
+      "cmd": "/opt/sk-autopilot/sk-autopilot",
+      "args": [],
+      "fa": "paper-plane"
+    },
+    {
+      "name": "weather",
+      "title": "Weather",
+      "bg": "RoyalBlue",
+      "cmd": "onlyone",
+      "args": [
+        "XyGrib"
+      ],
+      "fa": "cloud-sun-rain"
+    },
+    {
+      "name": "cam",
+      "title": "Camera",
+      "bg": "SeaGreen",
+      "cmd": "/opt/motioneye/motioneye",
+      "args": [],
+      "fa": "camera"
+    },
+    {
+      "name": "avnav",
+      "title": "AvNav",
+      "bg": "Olive",
+      "cmd": "/opt/AvNav/AvNav",
+      "args": [],
+      "fa": "chart-area"
+    },
+    {
+      "name": "dash",
+      "title": "Dashboard",
+      "bg": "Olive",
+      "cmd": "/opt/kip-dash/kip-dash",
+      "args": [],
+      "fa": "tachometer-alt"
+    },
+    {
+      "name": "pypilot",
+      "title": "PyPilot",
+      "bg": "ForestGreen",
+      "cmd": "/opt/Pypilot_webapp/Pypilot_webapp",
+      "args": [],
+      "fa": "paper-plane"
+    },
+    {
+      "name": "winds",
+      "title": "Winds",
+      "bg": "DarkSeaGreen",
+      "cmd": "gtk-launch",
+      "args": [
+        "windy"
+      ],
+      "fa": "flag-checkered"
+    },
+    {
+      "name": "t-storms",
+      "title": "T-Storms",
+      "bg": "Tan",
+      "cmd": "gtk-launch",
+      "args": [
+        "lightningmaps"
+      ],
+      "fa": "cloud-sun-rain"
+    },
+    {
+      "name": "music",
+      "title": "Music",
+      "bg": "IndianRed",
+      "cmd": "/opt/Iris/Iris",
+      "args": [],
+      "fa": "music"
+    },
+    {
+      "name": "video",
+      "title": "Video",
+      "bg": "Peru",
+      "cmd": "gtk-launch",
+      "args": [
+        "youtube"
+      ],
+      "fa": "youtube"
+    },
+    {
+      "name": "commands",
+      "title": "Commands",
+      "bg": "Tan",
+      "cmd": "/usr/local/bin/bbn-commands",
+      "args": [],
+      "fa": "route"
+    },
+    {
+      "name": "www",
+      "title": "WWW",
+      "bg": "SteelBlue",
+      "cmd": "onlyone",
+      "args": [
+        "gnome-www-browser"
+      ],
+      "fa": "globe"
+    },
+    {
+      "name": "email",
+      "title": "Email",
+      "bg": "RoyalBlue",
+      "cmd": "onlyone",
+      "args": [
+        "thunderbird"
+      ],
+      "fa": "envelope"
+    }
+  ],
+  "commands2": [
+    {
+      "name": "radio",
+      "title": "Radio",
+      "bg": "IndianRed",
+      "cmd": "onlyone",
+      "args": [
+        "fldigi"
+      ],
+      "fa": "broadcast-tower"
+    },
+    {
+      "name": "freeboard",
+      "title": "Freeboard",
+      "bg": "SteelBlue",
+      "cmd": "/opt/Freeboard-sk/Freeboard-sk",
+      "args": [],
+      "fa": "chart-area"
+    },
+    {
+      "name": "sky",
+      "title": "Sky",
+      "bg": "Olive",
+      "cmd": "onlyone",
+      "args": [
+        "stellarium-augmented"
+      ],
+      "fa": "star"
+    },
+    {
+      "name": "marinas",
+      "title": "Moorings",
+      "bg": "SaddleBrown",
+      "cmd": "/opt/Moorings/Moorings",
+      "args": [],
+      "fa": "anchor"
+    },
+    {
+      "name": "provisioning",
+      "title": "Provisioning",
+      "bg": "Peru",
+      "cmd": "onlyone",
+      "args": [
+        "gnome-www-browser",
+        "/usr/local/share/bbn-checklist/bbn-checklist.html"
+      ],
+      "fa": "shopping-basket"
+    },
+    {
+      "name": "vessel",
+      "title": "Vessel",
+      "bg": "RoyalBlue",
+      "cmd": "vessel-data",
+      "args": [
+        ""
+      ],
+      "fa": "ship"
+    },
+    {
+      "name": "signalk",
+      "title": "SignalK",
+      "bg": "ForestGreen",
+      "cmd": "gtk-launch",
+      "args": [
+        "signalk"
+      ],
+      "fa": "tachometer-alt"
+    },
+    {
+      "name": "terminal",
+      "title": "Terminal",
+      "bg": "RoyalBlue",
+      "cmd": "onlyone",
+      "args": [
+        "lxterminal"
+      ],
+      "fa": "terminal"
+    },
+    {
+      "name": "tasks",
+      "title": "Tasks",
+      "bg": "Olive",
+      "cmd": "onlyone",
+      "args": [
+        "lxtask"
+      ],
+      "fa": "tasks"
+    },
+    {
+      "name": "files",
+      "title": "Files",
+      "bg": "ForestGreen",
+      "cmd": "onlyone",
+      "args": [
+        "thunar"
+      ],
+      "fa": "folder"
+    },
+    {
+      "name": "power",
+      "title": "Power",
+      "bg": "Tan",
+      "cmd": "gtk-launch",
+      "args": [
+        "victron"
+      ],
+      "fa": "solar-panel"
+    },
+    {
+      "name": "drone",
+      "title": "Drones",
+      "bg": "SaddleBrown",
+      "cmd": "onlyone",
+      "args": [
+        "apmplanner2"
+      ],
+      "fa": "drone"
+    },
+    {
+      "name": "webcam",
+      "title": "Web Cam",
+      "bg": "SeaGreen",
+      "cmd": "onlyone",
+      "args": [
+        "webcamoid"
+      ],
+      "fa": "camera"
+    },
+    {
+      "name": "messenger",
+      "title": "Messenger",
+      "bg": "RoyalBlue",
+      "cmd": "/opt/WA-Web-Msg/WA-Web-Msg",
+      "args": [],
+      "fa": "envelope"
+    },
+    {
+      "name": "social",
+      "title": "Social",
+      "bg": "DarkSeaGreen",
+      "cmd": "/opt/facebook/facebook",
+      "args": [],
+      "fa": "facebook"
+    }
+  ],
+  "commands3": [
+    {
+      "name": "race",
+      "title": "Race",
+      "bg": "SteelBlue",
+      "cmd": "onlyone",
+      "args": [
+        "boats"
+      ],
+      "fa": "flag-checkered"
+    },
+    {
+      "name": "sail",
+      "title": "Sails",
+      "bg": "IndianRed",
+      "cmd": "onlyone",
+      "args": [
+        "sailcut"
+      ],
+      "fa": "ship"
+    },
+    {
+      "name": "data",
+      "title": "Monitoring",
+      "bg": "SaddleBrown",
+      "cmd": "/opt/skwiz/skwiz",
+      "args": [],
+      "fa": "tachometer-alt"
+    },
+    {
+      "name": "knots",
+      "title": "Knots",
+      "bg": "ForestGreen",
+      "cmd": "onlyone",
+      "args": [
+        "gnome-www-browser",
+        "/usr/local/share/knots/knots.html"
+      ],
+      "fa": "knot"
+    },
+    {
+      "name": "colreg",
+      "title": "ColReg",
+      "bg": "Olive",
+      "cmd": "onlyone",
+      "args": [
+        "gnome-www-browser",
+        "/usr/local/share/colreg/colreg.pdf"
+      ],
+      "fa": "book"
+    },
+    {
+      "name": "chess",
+      "title": "Chess",
+      "bg": "Tan",
+      "cmd": "onlyone",
+      "args": [
+        "gnome-chess"
+      ],
+      "fa": "chess"
+    },
+    {
+      "name": "edu",
+      "title": "Education",
+      "bg": "SeaGreen",
+      "cmd": "/opt/Nauticed/Nauticed",
+      "args": [],
+      "fa": "school"
+    },
+    {
+      "name": "movies",
+      "title": "Movies",
+      "bg": "Olive",
+      "cmd": "onlyone",
+      "args": [
+        "vlc"
+      ],
+      "fa": "camera"
+    },
+    {
+      "name": "caprine",
+      "title": "Caprine",
+      "bg": "RoyalBlue",
+      "cmd": "onlyone",
+      "args": [
+        "caprine"
+      ],
+      "fa": "envelope"
+    }
+  ],
+  "sites": [
+    {
+      "name": "google",
+      "url": "https://google.com/"
+    },
+    {
+      "name": "youtube",
+      "url": "https://youtube.com/"
+    },
+    {
+      "name": "facebook",
+      "url": "https://m.facebook.com/"
+    },
+    {
+      "name": "WA-Web-Msg",
+      "url": "https://web.whatsapp.com/"
+    },
+    {
+      "name": "moorings",
+      "url": "https://dockwa.com/"
+    },
+    {
+      "name": "nauticed",
+      "url": "https://nauticed.org/"
+    }
+  ]
+}

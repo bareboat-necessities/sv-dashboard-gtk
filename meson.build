@@ -9,6 +9,7 @@ endif
 gtkmm    = dependency('gtkmm-3.0', required: true)
 fc       = dependency('fontconfig', required: true)
 pangoft2 = dependency('pangoft2', required: true)
+jsonglib = dependency('json-glib-1.0', required: true)
 
 sources = files(
   'src/main.cpp',
@@ -16,6 +17,7 @@ sources = files(
   'src/MainWindow.cpp',
   'src/Desktop.cpp',
   'src/DesktopIcon.cpp',
+  'src/Icons.cpp',
   'src/RuntimeEnv.cpp',
   'src/FontRegistry.cpp'
 )
@@ -23,7 +25,7 @@ sources = files(
 executable('sv-dashboard',
   sources: sources,
   include_directories: include_directories('src'),
-  dependencies: [gtkmm, fc, pangoft2],
+  dependencies: [gtkmm, fc, pangoft2, jsonglib],
   install: true)
 
 # Install bundled fonts (script populates assets/fonts before build in CI)
