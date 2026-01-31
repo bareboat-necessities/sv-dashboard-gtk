@@ -20,7 +20,33 @@ std::vector<std::string> build_command_argv(const IconSpec& spec) {
     args.erase(args.begin());
   }
 
+  if (cmd.empty() && !args.empty()) {
+    cmd = args.front();
+    args.erase(args.begin());
+  }
+
   if (cmd.empty()) return {};
+
+  if (args.empty() && cmd.find_first_of(" \t\n\"'") != std::string::npos) {
+    gchar** parsed_argv = nullptr;
+    gint parsed_argc = 0;
+    GError* error = nullptr;
+    if (g_shell_parse_argv(cmd.c_str(), &parsed_argc, &parsed_argv, &error)) {
+      std::vector<std::string> argv_strings;
+      argv_strings.reserve(static_cast<size_t>(parsed_argc));
+      for (gint i = 0; i < parsed_argc; ++i) {
+        if (parsed_argv[i]) {
+          argv_strings.emplace_back(parsed_argv[i]);
+        }
+      }
+      g_strfreev(parsed_argv);
+      if (!argv_strings.empty()) {
+        return argv_strings;
+      }
+    } else if (error) {
+      g_error_free(error);
+    }
+  }
 
   std::vector<std::string> argv;
   argv.reserve(1 + args.size());
@@ -30,8 +56,21 @@ std::vector<std::string> build_command_argv(const IconSpec& spec) {
 }
 
 void launch_command(const IconSpec& spec) {
+  g_message("Icon clicked: %s", spec.label.c_str());
   auto argv_strings = build_command_argv(spec);
-  if (argv_strings.empty()) return;
+  if (argv_strings.empty()) {
+    g_warning("No command configured for icon: %s", spec.label.c_str());
+    return;
+  }
+
+  std::string command_line;
+  for (size_t i = 0; i < argv_strings.size(); ++i) {
+    if (i > 0) {
+      command_line += ' ';
+    }
+    command_line += argv_strings[i];
+  }
+  g_message("Launching command: %s", command_line.c_str());
 
   std::vector<char*> argv;
   argv.reserve(argv_strings.size() + 1);
