@@ -28,6 +28,7 @@ Glib::ustring DesktopIcon::to_utf8(char32_t cp) {
 // ---- IconCanvas ----
 
 DesktopIcon::IconCanvas::IconCanvas() {
+  set_has_window(false);
   set_halign(Gtk::ALIGN_CENTER);
   set_valign(Gtk::ALIGN_CENTER);
   set_hexpand(false);
