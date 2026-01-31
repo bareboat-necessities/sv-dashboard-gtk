@@ -1,6 +1,6 @@
 #include "Icons.h"
 
-#include <yaml-cpp/yaml.h>
+#include <yaml.h>
 #include <glib.h>
 
 #include <algorithm>
@@ -104,27 +104,171 @@ std::string color_class_for(const std::string& color) {
   return "bg-" + slugify_color(color);
 }
 
-std::vector<std::string> read_args(const YAML::Node& obj) {
+struct YamlNode {
+  enum class Type { Null, Scalar, Map, Seq };
+  Type type{Type::Null};
+  std::string scalar;
+  std::unordered_map<std::string, YamlNode> map;
+  std::vector<YamlNode> seq;
+};
+
+struct YamlContainer {
+  YamlNode* node{nullptr};
+  std::string pending_key;
+  bool expecting_key{false};
+};
+
+bool parse_yaml_file(const std::string& path, YamlNode& out) {
+  FILE* fh = fopen(path.c_str(), "rb");
+  if (!fh) {
+    return false;
+  }
+
+  yaml_parser_t parser;
+  if (!yaml_parser_initialize(&parser)) {
+    fclose(fh);
+    return false;
+  }
+  yaml_parser_set_input_file(&parser, fh);
+
+  std::vector<YamlContainer> stack;
+  yaml_event_t event;
+  bool ok = true;
+
+  auto attach_node = [&](YamlNode&& node) -> YamlNode* {
+    if (stack.empty()) {
+      out = std::move(node);
+      return &out;
+    }
+    auto& parent = stack.back();
+    if (parent.node->type == YamlNode::Type::Seq) {
+      parent.node->seq.emplace_back(std::move(node));
+      return &parent.node->seq.back();
+    }
+    if (parent.node->type == YamlNode::Type::Map) {
+      if (parent.pending_key.empty()) {
+        return nullptr;
+      }
+      const std::string key = parent.pending_key;
+      parent.node->map[key] = std::move(node);
+      parent.pending_key.clear();
+      parent.expecting_key = true;
+      return &parent.node->map.at(key);
+    }
+    return nullptr;
+  };
+
+  while (ok && yaml_parser_parse(&parser, &event)) {
+    switch (event.type) {
+      case YAML_STREAM_START_EVENT:
+      case YAML_STREAM_END_EVENT:
+      case YAML_DOCUMENT_START_EVENT:
+      case YAML_DOCUMENT_END_EVENT:
+        break;
+      case YAML_MAPPING_START_EVENT: {
+        YamlNode node;
+        node.type = YamlNode::Type::Map;
+        YamlNode* current = attach_node(std::move(node));
+        if (!current) {
+          ok = false;
+          break;
+        }
+        stack.push_back({current, "", true});
+        break;
+      }
+      case YAML_SEQUENCE_START_EVENT: {
+        YamlNode node;
+        node.type = YamlNode::Type::Seq;
+        YamlNode* current = attach_node(std::move(node));
+        if (!current) {
+          ok = false;
+          break;
+        }
+        stack.push_back({current, "", false});
+        break;
+      }
+      case YAML_MAPPING_END_EVENT:
+      case YAML_SEQUENCE_END_EVENT:
+        if (!stack.empty()) {
+          stack.pop_back();
+        }
+        break;
+      case YAML_SCALAR_EVENT: {
+        std::string value;
+        if (event.data.scalar.value) {
+          value.assign(reinterpret_cast<const char*>(event.data.scalar.value),
+                       event.data.scalar.length);
+        }
+        if (stack.empty()) {
+          out.type = YamlNode::Type::Scalar;
+          out.scalar = value;
+          break;
+        }
+        auto& parent = stack.back();
+        if (parent.node->type == YamlNode::Type::Map) {
+          if (parent.expecting_key) {
+            parent.pending_key = value;
+            parent.expecting_key = false;
+          } else {
+            YamlNode node;
+            node.type = YamlNode::Type::Scalar;
+            node.scalar = value;
+            parent.node->map[parent.pending_key] = std::move(node);
+            parent.pending_key.clear();
+            parent.expecting_key = true;
+          }
+        } else if (parent.node->type == YamlNode::Type::Seq) {
+          YamlNode node;
+          node.type = YamlNode::Type::Scalar;
+          node.scalar = value;
+          parent.node->seq.emplace_back(std::move(node));
+        }
+        break;
+      }
+      default:
+        break;
+    }
+    yaml_event_delete(&event);
+  }
+
+  if (!ok) {
+    yaml_parser_delete(&parser);
+    fclose(fh);
+    return false;
+  }
+
+  yaml_parser_delete(&parser);
+  fclose(fh);
+  return out.type != YamlNode::Type::Null;
+}
+
+const YamlNode* find_child(const YamlNode& node, const char* key) {
+  if (node.type != YamlNode::Type::Map) return nullptr;
+  auto it = node.map.find(key);
+  if (it == node.map.end()) return nullptr;
+  return &it->second;
+}
+
+std::vector<std::string> read_args(const YamlNode& obj) {
   std::vector<std::string> args;
-  const auto args_node = obj["args"];
-  if (!args_node || !args_node.IsSequence()) return args;
-  args.reserve(args_node.size());
-  for (const auto& node : args_node) {
-    if (!node.IsScalar()) continue;
-    const auto value = node.as<std::string>();
-    if (!value.empty()) {
-      args.emplace_back(value);
+  const auto* args_node = find_child(obj, "args");
+  if (!args_node || args_node->type != YamlNode::Type::Seq) return args;
+  args.reserve(args_node->seq.size());
+  for (const auto& node : args_node->seq) {
+    if (node.type != YamlNode::Type::Scalar) continue;
+    if (!node.scalar.empty()) {
+      args.emplace_back(node.scalar);
     }
   }
   return args;
 }
 
-std::string get_string_member(const YAML::Node& obj,
+std::string get_string_member(const YamlNode& obj,
                               const char* key,
                               const char* fallback) {
-  const auto node = obj[key];
-  if (node && node.IsScalar()) {
-    return node.as<std::string>();
+  const auto* node = find_child(obj, key);
+  if (node && node->type == YamlNode::Type::Scalar) {
+    return node->scalar;
   }
   return fallback ? fallback : "";
 }
@@ -147,17 +291,17 @@ const std::unordered_map<std::string, std::string>& default_palette_map() {
   return map;
 }
 
-std::vector<IconSpec> read_page(const YAML::Node& root,
+std::vector<IconSpec> read_page(const YamlNode& root,
                                 const char* key,
                                 std::unordered_map<std::string, std::string>& palette) {
   std::vector<IconSpec> out;
-  const auto arr = root[key];
-  if (!arr || !arr.IsSequence()) return out;
+  const auto* arr = find_child(root, key);
+  if (!arr || arr->type != YamlNode::Type::Seq) return out;
 
-  out.reserve(arr.size());
+  out.reserve(arr->seq.size());
 
-  for (const auto& obj : arr) {
-    if (!obj || !obj.IsMap()) continue;
+  for (const auto& obj : arr->seq) {
+    if (obj.type != YamlNode::Type::Map) continue;
 
     const std::string title = get_string_member(obj, "title", "");
     const std::string fa = get_string_member(obj, "fa", "");
@@ -345,13 +489,11 @@ IconConfig load_icon_config() {
     return default_icon_config();
   }
 
-  YAML::Node root;
-  try {
-    root = YAML::LoadFile(config_path);
-  } catch (const YAML::Exception&) {
+  YamlNode root;
+  if (!parse_yaml_file(config_path, root)) {
     return default_icon_config();
   }
-  if (!root || !root.IsMap()) {
+  if (root.type != YamlNode::Type::Map) {
     return default_icon_config();
   }
 
