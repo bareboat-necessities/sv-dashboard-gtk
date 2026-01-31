@@ -303,7 +303,7 @@ void copy_default_config_if_missing(const std::string& source, const std::string
   std::filesystem::path dest_path(dest);
   const std::string dir = dest_path.parent_path().string();
   if (!dir.empty()) {
-    g_mkdir_with_parents(dir.c_str(), 0o755);
+    g_mkdir_with_parents(dir.c_str(), 0755);
   }
 
   gchar* contents = nullptr;
