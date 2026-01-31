@@ -1,6 +1,6 @@
 #include "Icons.h"
 
-#include <json-glib/json-glib.h>
+#include <yaml-cpp/yaml.h>
 #include <glib.h>
 
 #include <algorithm>
@@ -104,30 +104,29 @@ std::string color_class_for(const std::string& color) {
   return "bg-" + slugify_color(color);
 }
 
-std::vector<std::string> read_args(JsonObject* obj) {
+std::vector<std::string> read_args(const YAML::Node& obj) {
   std::vector<std::string> args;
-  if (!json_object_has_member(obj, "args")) return args;
-  auto* arr = json_object_get_array_member(obj, "args");
-  if (!arr) return args;
-  const guint n = json_array_get_length(arr);
-  args.reserve(n);
-  for (guint i = 0; i < n; ++i) {
-    auto* node = json_array_get_element(arr, i);
-    if (JSON_NODE_HOLDS_VALUE(node)) {
-      const char* value = json_node_get_string(node);
-      if (value && *value) {
-        args.emplace_back(value);
-      }
+  const auto args_node = obj["args"];
+  if (!args_node || !args_node.IsSequence()) return args;
+  args.reserve(args_node.size());
+  for (const auto& node : args_node) {
+    if (!node.IsScalar()) continue;
+    const auto value = node.as<std::string>();
+    if (!value.empty()) {
+      args.emplace_back(value);
     }
   }
   return args;
 }
 
-const char* get_string_member(JsonObject* obj, const char* key, const char* fallback) {
-  if (json_object_has_member(obj, key)) {
-    return json_object_get_string_member(obj, key);
+std::string get_string_member(const YAML::Node& obj,
+                              const char* key,
+                              const char* fallback) {
+  const auto node = obj[key];
+  if (node && node.IsScalar()) {
+    return node.as<std::string>();
   }
-  return fallback;
+  return fallback ? fallback : "";
 }
 
 const std::unordered_map<std::string, std::string>& default_palette_map() {
@@ -148,37 +147,31 @@ const std::unordered_map<std::string, std::string>& default_palette_map() {
   return map;
 }
 
-std::vector<IconSpec> read_page(JsonObject* root,
+std::vector<IconSpec> read_page(const YAML::Node& root,
                                 const char* key,
                                 std::unordered_map<std::string, std::string>& palette) {
   std::vector<IconSpec> out;
-  if (!json_object_has_member(root, key)) return out;
+  const auto arr = root[key];
+  if (!arr || !arr.IsSequence()) return out;
 
-  auto* arr = json_object_get_array_member(root, key);
-  if (!arr) return out;
+  out.reserve(arr.size());
 
-  const guint n = json_array_get_length(arr);
-  out.reserve(n);
+  for (const auto& obj : arr) {
+    if (!obj || !obj.IsMap()) continue;
 
-  for (guint i = 0; i < n; ++i) {
-    auto* node = json_array_get_element(arr, i);
-    if (!JSON_NODE_HOLDS_OBJECT(node)) continue;
-    auto* obj = json_node_get_object(node);
-    if (!obj) continue;
-
-    const char* title = get_string_member(obj, "title", "");
-    const char* fa = get_string_member(obj, "fa", "");
-    const char* bg = get_string_member(obj, "bg", "#455A64");
-    const char* cmd = get_string_member(obj, "cmd", "");
-    if (!cmd || !*cmd) {
+    const std::string title = get_string_member(obj, "title", "");
+    const std::string fa = get_string_member(obj, "fa", "");
+    const std::string bg = get_string_member(obj, "bg", "#455A64");
+    std::string cmd = get_string_member(obj, "cmd", "");
+    if (cmd.empty()) {
       cmd = get_string_member(obj, "command", "");
     }
 
-    if (!fa || !*fa) {
+    if (fa.empty()) {
       continue;
     }
     auto glyph = glyph_for_image(fa);
-    std::string bg_value = bg ? bg : "#455A64";
+    std::string bg_value = bg;
     std::string class_name = color_class_for(bg_value);
     if (!bg_value.empty()) {
       if (bg_value.rfind("bg-", 0) == 0) {
@@ -194,9 +187,9 @@ std::vector<IconSpec> read_page(JsonObject* root,
     IconSpec spec;
     spec.codepoint = glyph.codepoint;
     spec.isBrand = glyph.isBrand;
-    spec.label = title ? title : "";
+    spec.label = title;
     spec.colorClass = class_name;
-    spec.command = cmd ? cmd : "";
+    spec.command = cmd;
     spec.args = read_args(obj);
 
     out.push_back(std::move(spec));
@@ -258,7 +251,7 @@ IconConfig default_icon_config() {
 
 std::string user_config_path() {
   const char* cfg_dir = g_get_user_config_dir();
-  return std::string(cfg_dir ? cfg_dir : ".") + "/sv-dashboard-gtk/icons.json";
+  return std::string(cfg_dir ? cfg_dir : ".") + "/sv-dashboard-gtk/sv-dashboard.yaml";
 }
 
 std::string exe_dir() {
@@ -281,16 +274,16 @@ std::vector<std::string> default_config_candidates() {
   std::vector<std::string> paths;
   const gchar* const* data_dirs = g_get_system_data_dirs();
   for (size_t i = 0; data_dirs && data_dirs[i]; ++i) {
-    paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/icons.json");
-    paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/assets/icons.json");
+    paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/sv-dashboard.yaml");
+    paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/assets/sv-dashboard.yaml");
   }
   const std::string bin_dir = exe_dir();
-  paths.emplace_back(bin_dir + "/../share/sv-dashboard-gtk/icons.json");
-  paths.emplace_back(bin_dir + "/share/sv-dashboard-gtk/icons.json");
-  paths.emplace_back(bin_dir + "/../assets/icons.json");
-  paths.emplace_back(bin_dir + "/assets/icons.json");
+  paths.emplace_back(bin_dir + "/../share/sv-dashboard-gtk/sv-dashboard.yaml");
+  paths.emplace_back(bin_dir + "/share/sv-dashboard-gtk/sv-dashboard.yaml");
+  paths.emplace_back(bin_dir + "/../assets/sv-dashboard.yaml");
+  paths.emplace_back(bin_dir + "/assets/sv-dashboard.yaml");
   if (char* cwd = g_get_current_dir()) {
-    paths.emplace_back(std::string(cwd) + "/assets/icons.json");
+    paths.emplace_back(std::string(cwd) + "/assets/sv-dashboard.yaml");
     g_free(cwd);
   }
   return paths;
@@ -352,38 +345,25 @@ IconConfig load_icon_config() {
     return default_icon_config();
   }
 
-  GError* error = nullptr;
-  JsonParser* parser = json_parser_new();
-  gboolean ok = json_parser_load_from_file(parser, config_path.c_str(), &error);
-  if (!ok || error) {
-    if (error) g_error_free(error);
-    g_object_unref(parser);
+  YAML::Node root;
+  try {
+    root = YAML::LoadFile(config_path);
+  } catch (const YAML::Exception&) {
     return default_icon_config();
   }
-
-  JsonNode* root_node = json_parser_get_root(parser);
-  if (!JSON_NODE_HOLDS_OBJECT(root_node)) {
-    g_object_unref(parser);
-    return default_icon_config();
-  }
-
-  auto* root_obj = json_node_get_object(root_node);
-  if (!root_obj) {
-    g_object_unref(parser);
+  if (!root || !root.IsMap()) {
     return default_icon_config();
   }
 
   std::unordered_map<std::string, std::string> palette_map;
   IconConfig cfg;
-  cfg.page1 = read_page(root_obj, "commands1", palette_map);
-  cfg.page2 = read_page(root_obj, "commands2", palette_map);
+  cfg.page1 = read_page(root, "commands1", palette_map);
+  cfg.page2 = read_page(root, "commands2", palette_map);
 
   cfg.palette.reserve(palette_map.size());
   for (const auto& entry : palette_map) {
     cfg.palette.emplace_back(entry.first, entry.second);
   }
-
-  g_object_unref(parser);
 
   if (cfg.page1.empty() && cfg.page2.empty()) {
     return default_icon_config();
