@@ -9,7 +9,6 @@ endif
 gtkmm    = dependency('gtkmm-3.0', required: true)
 fc       = dependency('fontconfig', required: true)
 pangoft2 = dependency('pangoft2', required: true)
-jsonglib = dependency('json-glib-1.0', required: true)
 
 sources = files(
   'src/main.cpp',
@@ -25,7 +24,7 @@ sources = files(
 executable('sv-dashboard',
   sources: sources,
   include_directories: include_directories('src'),
-  dependencies: [gtkmm, fc, pangoft2, jsonglib],
+  dependencies: [gtkmm, fc, pangoft2],
   install: true)
 
 # Install bundled fonts (script populates assets/fonts before build in CI)
@@ -33,9 +32,9 @@ install_subdir('assets/fonts',
   install_dir: join_paths(get_option('datadir'), 'sv-dashboard-gtk', 'fonts'),
   strip_directory: true)
 
-install_data('assets/icons.json',
+install_data('assets/sv-dashboard.yaml',
   install_dir: join_paths(get_option('datadir'), 'sv-dashboard-gtk'))
-install_data('assets/icons.json',
+install_data('assets/sv-dashboard.yaml',
   install_dir: join_paths(get_option('datadir'), 'sv-dashboard-gtk', 'assets'))
-install_data('assets/icons.json',
+install_data('assets/sv-dashboard.yaml',
   install_dir: join_paths(get_option('bindir'), 'assets'))

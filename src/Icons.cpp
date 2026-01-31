@@ -1,12 +1,13 @@
 #include "Icons.h"
 
-#include <json-glib/json-glib.h>
 #include <glib.h>
 
 #include <algorithm>
 #include <array>
 #include <cctype>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 
@@ -104,30 +105,238 @@ std::string color_class_for(const std::string& color) {
   return "bg-" + slugify_color(color);
 }
 
-std::vector<std::string> read_args(JsonObject* obj) {
-  std::vector<std::string> args;
-  if (!json_object_has_member(obj, "args")) return args;
-  auto* arr = json_object_get_array_member(obj, "args");
-  if (!arr) return args;
-  const guint n = json_array_get_length(arr);
-  args.reserve(n);
-  for (guint i = 0; i < n; ++i) {
-    auto* node = json_array_get_element(arr, i);
-    if (JSON_NODE_HOLDS_VALUE(node)) {
-      const char* value = json_node_get_string(node);
-      if (value && *value) {
-        args.emplace_back(value);
+struct YamlNode {
+  enum class Type { Null, Scalar, Map, Seq };
+  Type type{Type::Null};
+  std::string scalar;
+  std::unordered_map<std::string, YamlNode> map;
+  std::vector<YamlNode> seq;
+};
+
+struct YamlFrame {
+  int indent;
+  YamlNode* node;
+};
+
+std::string trim_copy(const std::string& value) {
+  size_t start = 0;
+  while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start]))) {
+    ++start;
+  }
+  size_t end = value.size();
+  while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+    --end;
+  }
+  return value.substr(start, end - start);
+}
+
+std::string strip_quotes(const std::string& value) {
+  if (value.size() >= 2) {
+    const char first = value.front();
+    const char last = value.back();
+    if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+      return value.substr(1, value.size() - 2);
+    }
+  }
+  return value;
+}
+
+int line_indent(const std::string& line) {
+  int count = 0;
+  for (char c : line) {
+    if (c == ' ') {
+      ++count;
+    } else {
+      break;
+    }
+  }
+  return count;
+}
+
+bool is_blank_or_comment(const std::string& line) {
+  for (char c : line) {
+    if (std::isspace(static_cast<unsigned char>(c))) continue;
+    return c == '#';
+  }
+  return true;
+}
+
+std::string strip_inline_comment(const std::string& value) {
+  bool in_single = false;
+  bool in_double = false;
+  for (size_t i = 0; i < value.size(); ++i) {
+    char c = value[i];
+    if (c == '"' && !in_single) {
+      in_double = !in_double;
+    } else if (c == '\'' && !in_double) {
+      in_single = !in_single;
+    } else if (c == '#' && !in_single && !in_double) {
+      if (i == 0 || std::isspace(static_cast<unsigned char>(value[i - 1]))) {
+        return trim_copy(value.substr(0, i));
       }
+    }
+  }
+  return trim_copy(value);
+}
+
+bool find_next_content(const std::vector<std::string>& lines,
+                       size_t start,
+                       size_t& out_index,
+                       int& out_indent,
+                       std::string& out_content) {
+  for (size_t i = start; i < lines.size(); ++i) {
+    if (is_blank_or_comment(lines[i])) continue;
+    out_index = i;
+    out_indent = line_indent(lines[i]);
+    out_content = trim_copy(lines[i].substr(static_cast<size_t>(out_indent)));
+    return true;
+  }
+  return false;
+}
+
+bool parse_yaml_file(const std::string& path, YamlNode& out) {
+  std::ifstream in(path);
+  if (!in) {
+    return false;
+  }
+
+  std::vector<std::string> lines;
+  std::string line;
+  while (std::getline(in, line)) {
+    lines.push_back(line);
+  }
+
+  out = YamlNode{};
+  out.type = YamlNode::Type::Map;
+  std::vector<YamlFrame> stack;
+  stack.push_back({-1, &out});
+
+  for (size_t i = 0; i < lines.size(); ++i) {
+    if (is_blank_or_comment(lines[i])) continue;
+
+    int indent = line_indent(lines[i]);
+    std::string content = trim_copy(lines[i].substr(static_cast<size_t>(indent)));
+    if (content.empty()) continue;
+
+    while (stack.size() > 1 && indent <= stack.back().indent) {
+      stack.pop_back();
+    }
+
+    YamlNode* parent = stack.back().node;
+
+    if (content.rfind("- ", 0) == 0) {
+      if (parent->type != YamlNode::Type::Seq) {
+        return false;
+      }
+      std::string item = trim_copy(content.substr(2));
+      if (item.empty()) {
+        YamlNode node;
+        node.type = YamlNode::Type::Map;
+        parent->seq.emplace_back(std::move(node));
+        stack.push_back({indent, &parent->seq.back()});
+        continue;
+      }
+      auto colon_pos = item.find(':');
+      if (colon_pos == std::string::npos) {
+        YamlNode node;
+        node.type = YamlNode::Type::Scalar;
+        node.scalar = strip_quotes(strip_inline_comment(item));
+        parent->seq.emplace_back(std::move(node));
+        continue;
+      }
+      std::string key = trim_copy(item.substr(0, colon_pos));
+      std::string value = strip_inline_comment(item.substr(colon_pos + 1));
+      YamlNode map_node;
+      map_node.type = YamlNode::Type::Map;
+      YamlNode value_node;
+      if (value.empty()) {
+        value_node.type = YamlNode::Type::Null;
+      } else if (value == "[]") {
+        value_node.type = YamlNode::Type::Seq;
+      } else {
+        value_node.type = YamlNode::Type::Scalar;
+        value_node.scalar = strip_quotes(value);
+      }
+      map_node.map.emplace(key, std::move(value_node));
+      parent->seq.emplace_back(std::move(map_node));
+      if (value.empty()) {
+        stack.push_back({indent, &parent->seq.back()});
+      }
+      continue;
+    }
+
+    if (parent->type != YamlNode::Type::Map) {
+      return false;
+    }
+
+    auto colon_pos = content.find(':');
+    if (colon_pos == std::string::npos) {
+      return false;
+    }
+    std::string key = trim_copy(content.substr(0, colon_pos));
+    std::string value = strip_inline_comment(content.substr(colon_pos + 1));
+
+    if (value == "[]") {
+      YamlNode node;
+      node.type = YamlNode::Type::Seq;
+      parent->map[key] = std::move(node);
+      continue;
+    }
+
+    if (!value.empty()) {
+      YamlNode node;
+      node.type = YamlNode::Type::Scalar;
+      node.scalar = strip_quotes(value);
+      parent->map[key] = std::move(node);
+      continue;
+    }
+
+    size_t next_index = 0;
+    int next_indent = 0;
+    std::string next_content;
+    YamlNode node;
+    if (find_next_content(lines, i + 1, next_index, next_indent, next_content) &&
+        next_indent > indent && next_content.rfind("- ", 0) == 0) {
+      node.type = YamlNode::Type::Seq;
+    } else {
+      node.type = YamlNode::Type::Map;
+    }
+    parent->map[key] = std::move(node);
+    stack.push_back({indent, &parent->map[key]});
+  }
+
+  return true;
+}
+
+const YamlNode* find_child(const YamlNode& node, const char* key) {
+  if (node.type != YamlNode::Type::Map) return nullptr;
+  auto it = node.map.find(key);
+  if (it == node.map.end()) return nullptr;
+  return &it->second;
+}
+
+std::vector<std::string> read_args(const YamlNode& obj) {
+  std::vector<std::string> args;
+  const auto* args_node = find_child(obj, "args");
+  if (!args_node || args_node->type != YamlNode::Type::Seq) return args;
+  args.reserve(args_node->seq.size());
+  for (const auto& node : args_node->seq) {
+    if (node.type != YamlNode::Type::Scalar) continue;
+    if (!node.scalar.empty()) {
+      args.emplace_back(node.scalar);
     }
   }
   return args;
 }
 
-const char* get_string_member(JsonObject* obj, const char* key, const char* fallback) {
-  if (json_object_has_member(obj, key)) {
-    return json_object_get_string_member(obj, key);
+std::string get_string_member(const YamlNode& obj,
+                              const char* key,
+                              const char* fallback) {
+  const auto* node = find_child(obj, key);
+  if (node && node->type == YamlNode::Type::Scalar) {
+    return node->scalar;
   }
-  return fallback;
+  return fallback ? fallback : "";
 }
 
 const std::unordered_map<std::string, std::string>& default_palette_map() {
@@ -148,37 +357,31 @@ const std::unordered_map<std::string, std::string>& default_palette_map() {
   return map;
 }
 
-std::vector<IconSpec> read_page(JsonObject* root,
+std::vector<IconSpec> read_page(const YamlNode& root,
                                 const char* key,
                                 std::unordered_map<std::string, std::string>& palette) {
   std::vector<IconSpec> out;
-  if (!json_object_has_member(root, key)) return out;
+  const auto* arr = find_child(root, key);
+  if (!arr || arr->type != YamlNode::Type::Seq) return out;
 
-  auto* arr = json_object_get_array_member(root, key);
-  if (!arr) return out;
+  out.reserve(arr->seq.size());
 
-  const guint n = json_array_get_length(arr);
-  out.reserve(n);
+  for (const auto& obj : arr->seq) {
+    if (obj.type != YamlNode::Type::Map) continue;
 
-  for (guint i = 0; i < n; ++i) {
-    auto* node = json_array_get_element(arr, i);
-    if (!JSON_NODE_HOLDS_OBJECT(node)) continue;
-    auto* obj = json_node_get_object(node);
-    if (!obj) continue;
-
-    const char* title = get_string_member(obj, "title", "");
-    const char* fa = get_string_member(obj, "fa", "");
-    const char* bg = get_string_member(obj, "bg", "#455A64");
-    const char* cmd = get_string_member(obj, "cmd", "");
-    if (!cmd || !*cmd) {
+    const std::string title = get_string_member(obj, "title", "");
+    const std::string fa = get_string_member(obj, "fa", "");
+    const std::string bg = get_string_member(obj, "bg", "#455A64");
+    std::string cmd = get_string_member(obj, "cmd", "");
+    if (cmd.empty()) {
       cmd = get_string_member(obj, "command", "");
     }
 
-    if (!fa || !*fa) {
+    if (fa.empty()) {
       continue;
     }
     auto glyph = glyph_for_image(fa);
-    std::string bg_value = bg ? bg : "#455A64";
+    std::string bg_value = bg;
     std::string class_name = color_class_for(bg_value);
     if (!bg_value.empty()) {
       if (bg_value.rfind("bg-", 0) == 0) {
@@ -194,9 +397,9 @@ std::vector<IconSpec> read_page(JsonObject* root,
     IconSpec spec;
     spec.codepoint = glyph.codepoint;
     spec.isBrand = glyph.isBrand;
-    spec.label = title ? title : "";
+    spec.label = title;
     spec.colorClass = class_name;
-    spec.command = cmd ? cmd : "";
+    spec.command = cmd;
     spec.args = read_args(obj);
 
     out.push_back(std::move(spec));
@@ -258,7 +461,7 @@ IconConfig default_icon_config() {
 
 std::string user_config_path() {
   const char* cfg_dir = g_get_user_config_dir();
-  return std::string(cfg_dir ? cfg_dir : ".") + "/sv-dashboard-gtk/icons.json";
+  return std::string(cfg_dir ? cfg_dir : ".") + "/sv-dashboard-gtk/sv-dashboard.yaml";
 }
 
 std::string exe_dir() {
@@ -281,16 +484,16 @@ std::vector<std::string> default_config_candidates() {
   std::vector<std::string> paths;
   const gchar* const* data_dirs = g_get_system_data_dirs();
   for (size_t i = 0; data_dirs && data_dirs[i]; ++i) {
-    paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/icons.json");
-    paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/assets/icons.json");
+    paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/sv-dashboard.yaml");
+    paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/assets/sv-dashboard.yaml");
   }
   const std::string bin_dir = exe_dir();
-  paths.emplace_back(bin_dir + "/../share/sv-dashboard-gtk/icons.json");
-  paths.emplace_back(bin_dir + "/share/sv-dashboard-gtk/icons.json");
-  paths.emplace_back(bin_dir + "/../assets/icons.json");
-  paths.emplace_back(bin_dir + "/assets/icons.json");
+  paths.emplace_back(bin_dir + "/../share/sv-dashboard-gtk/sv-dashboard.yaml");
+  paths.emplace_back(bin_dir + "/share/sv-dashboard-gtk/sv-dashboard.yaml");
+  paths.emplace_back(bin_dir + "/../assets/sv-dashboard.yaml");
+  paths.emplace_back(bin_dir + "/assets/sv-dashboard.yaml");
   if (char* cwd = g_get_current_dir()) {
-    paths.emplace_back(std::string(cwd) + "/assets/icons.json");
+    paths.emplace_back(std::string(cwd) + "/assets/sv-dashboard.yaml");
     g_free(cwd);
   }
   return paths;
@@ -352,38 +555,23 @@ IconConfig load_icon_config() {
     return default_icon_config();
   }
 
-  GError* error = nullptr;
-  JsonParser* parser = json_parser_new();
-  gboolean ok = json_parser_load_from_file(parser, config_path.c_str(), &error);
-  if (!ok || error) {
-    if (error) g_error_free(error);
-    g_object_unref(parser);
+  YamlNode root;
+  if (!parse_yaml_file(config_path, root)) {
     return default_icon_config();
   }
-
-  JsonNode* root_node = json_parser_get_root(parser);
-  if (!JSON_NODE_HOLDS_OBJECT(root_node)) {
-    g_object_unref(parser);
-    return default_icon_config();
-  }
-
-  auto* root_obj = json_node_get_object(root_node);
-  if (!root_obj) {
-    g_object_unref(parser);
+  if (root.type != YamlNode::Type::Map) {
     return default_icon_config();
   }
 
   std::unordered_map<std::string, std::string> palette_map;
   IconConfig cfg;
-  cfg.page1 = read_page(root_obj, "commands1", palette_map);
-  cfg.page2 = read_page(root_obj, "commands2", palette_map);
+  cfg.page1 = read_page(root, "commands1", palette_map);
+  cfg.page2 = read_page(root, "commands2", palette_map);
 
   cfg.palette.reserve(palette_map.size());
   for (const auto& entry : palette_map) {
     cfg.palette.emplace_back(entry.first, entry.second);
   }
-
-  g_object_unref(parser);
 
   if (cfg.page1.empty() && cfg.page2.empty()) {
     return default_icon_config();
