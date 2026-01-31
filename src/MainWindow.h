@@ -34,7 +34,6 @@ private:
   Gtk::Box     root_{Gtk::ORIENTATION_HORIZONTAL};
 
   Gtk::Stack   stack_;
-  Gtk::EventBox swipe_box_;
   Gtk::Button  btn_left_;
   Gtk::Button  btn_right_;
 
