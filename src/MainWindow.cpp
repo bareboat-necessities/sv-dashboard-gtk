@@ -153,8 +153,11 @@ void MainWindow::apply_ui_scale(int w, int h) {
   scheme_bar_.set_margin_start(std::max(2, (int)std::lround(14 * ui_scale_)));
   scheme_bar_.set_margin_bottom(std::max(2, (int)std::lround(12 * ui_scale_)));
 
-  if (page1_) page1_->set_ui_scale(ui_scale_, show_labels_);
-  if (page2_) page2_->set_ui_scale(ui_scale_, show_labels_);
+  for (auto* page : pages_) {
+    if (page) {
+      page->set_ui_scale(ui_scale_, show_labels_);
+    }
+  }
 
   css_provider_->load_from_data(build_css(scheme_));
 
@@ -171,11 +174,15 @@ void MainWindow::handle_swipe_delta(double dx, double dy, guint32 dt_ms) {
   }
   if (std::fabs(dx) < std::fabs(dy) * 1.2) return;
 
-  const auto name = stack_.get_visible_child_name();
+  if (pages_.size() < 2) return;
   if (dx < 0) {
-    if (name == "page1") show_page("page2");
+    if (current_page_index_ + 1 < pages_.size()) {
+      show_page_index(current_page_index_ + 1);
+    }
   } else {
-    if (name == "page2") show_page("page1");
+    if (current_page_index_ > 0) {
+      show_page_index(current_page_index_ - 1);
+    }
   }
 }
 
@@ -216,10 +223,15 @@ MainWindow::MainWindow() {
 
   auto config = load_icon_config();
   palette_ = config.palette;
-  page1_ = Gtk::manage(new Desktop(config.page1));
-  page2_ = Gtk::manage(new Desktop(config.page2));
-  stack_.add(*page1_, "page1");
-  stack_.add(*page2_, "page2");
+  pages_.reserve(config.pages.size());
+  page_names_.reserve(config.pages.size());
+  for (size_t i = 0; i < config.pages.size(); ++i) {
+    auto* page = Gtk::manage(new Desktop(config.pages[i]));
+    pages_.push_back(page);
+    Glib::ustring name = "page" + std::to_string(i + 1);
+    page_names_.push_back(name);
+    stack_.add(*page, name);
+  }
 
   btn_left_.set_label(cp_to_utf8(CHEV_LEFT));
   btn_right_.set_label(cp_to_utf8(CHEV_RIGHT));
@@ -232,8 +244,16 @@ MainWindow::MainWindow() {
   btn_left_.set_size_request(1, 1);
   btn_right_.set_size_request(1, 1);
 
-  btn_left_.signal_clicked().connect([this] { show_page("page1"); });
-  btn_right_.signal_clicked().connect([this] { show_page("page2"); });
+  btn_left_.signal_clicked().connect([this] {
+    if (current_page_index_ > 0) {
+      show_page_index(current_page_index_ - 1);
+    }
+  });
+  btn_right_.signal_clicked().connect([this] {
+    if (current_page_index_ + 1 < pages_.size()) {
+      show_page_index(current_page_index_ + 1);
+    }
+  });
 
   root_.pack_start(btn_left_, Gtk::PACK_SHRINK, 0);
   root_.pack_start(stack_, Gtk::PACK_EXPAND_WIDGET);
@@ -278,7 +298,7 @@ MainWindow::MainWindow() {
   set_scheme(Scheme::Day);
 
   show_all();
-  show_page("page1");
+  show_page_index(0);
 
   signal_realize().connect([this] {
     auto a = overlay_.get_allocation();
@@ -286,26 +306,47 @@ MainWindow::MainWindow() {
   });
 }
 
+void MainWindow::show_page_index(size_t index) {
+  if (index >= page_names_.size()) return;
+  current_page_index_ = index;
+  stack_.set_visible_child(page_names_[index]);
+  refresh_nav();
+}
+
 void MainWindow::show_page(const Glib::ustring& name) {
   stack_.set_visible_child(name);
+  for (size_t i = 0; i < page_names_.size(); ++i) {
+    if (page_names_[i] == name) {
+      current_page_index_ = i;
+      break;
+    }
+  }
   refresh_nav();
 }
 
 void MainWindow::refresh_nav() {
-  const auto name = stack_.get_visible_child_name();
-  btn_left_.set_sensitive(name != "page1");
-  btn_right_.set_sensitive(name != "page2");
+  if (page_names_.empty()) {
+    btn_left_.set_sensitive(false);
+    btn_right_.set_sensitive(false);
+    return;
+  }
+  btn_left_.set_sensitive(current_page_index_ > 0);
+  btn_right_.set_sensitive(current_page_index_ + 1 < page_names_.size());
 }
 
 bool MainWindow::on_key_press(GdkEventKey* e) {
   switch (e->keyval) {
     case GDK_KEY_Right:
     case GDK_KEY_Page_Down:
-      show_page("page2");
+      if (current_page_index_ + 1 < pages_.size()) {
+        show_page_index(current_page_index_ + 1);
+      }
       return true;
     case GDK_KEY_Left:
     case GDK_KEY_Page_Up:
-      show_page("page1");
+      if (current_page_index_ > 0) {
+        show_page_index(current_page_index_ - 1);
+      }
       return true;
 
     case GDK_KEY_1: set_scheme(Scheme::Day);   return true;

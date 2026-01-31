@@ -1,4 +1,5 @@
 #include "Icons.h"
+#include "RuntimeEnv.h"
 
 #include <glib.h>
 
@@ -357,16 +358,14 @@ const std::unordered_map<std::string, std::string>& default_palette_map() {
   return map;
 }
 
-std::vector<IconSpec> read_page(const YamlNode& root,
-                                const char* key,
+std::vector<IconSpec> read_page(const YamlNode& arr,
                                 std::unordered_map<std::string, std::string>& palette) {
   std::vector<IconSpec> out;
-  const auto* arr = find_child(root, key);
-  if (!arr || arr->type != YamlNode::Type::Seq) return out;
+  if (arr.type != YamlNode::Type::Seq) return out;
 
-  out.reserve(arr->seq.size());
+  out.reserve(arr.seq.size());
 
-  for (const auto& obj : arr->seq) {
+  for (const auto& obj : arr.seq) {
     if (obj.type != YamlNode::Type::Map) continue;
 
     const std::string title = get_string_member(obj, "title", "");
@@ -408,9 +407,26 @@ std::vector<IconSpec> read_page(const YamlNode& root,
   return out;
 }
 
+std::vector<std::vector<IconSpec>> read_pages(const YamlNode& root,
+                                              std::unordered_map<std::string, std::string>& palette) {
+  std::vector<std::vector<IconSpec>> pages;
+  const auto* node = find_child(root, "pages");
+  if (!node || node->type != YamlNode::Type::Seq) return pages;
+
+  pages.reserve(node->seq.size());
+  for (const auto& page_node : node->seq) {
+    auto page = read_page(page_node, palette);
+    if (!page.empty()) {
+      pages.emplace_back(std::move(page));
+    }
+  }
+  return pages;
+}
+
 IconConfig default_icon_config() {
   IconConfig cfg;
-  cfg.page1 = {
+  cfg.pages = {
+    {
     { U'\uf5a0', "Freeboard",     false, "bg-azure", "", {} },
     { U'\uf005', "Sky",           false, "bg-indigo", "", {} },
     { U'\uf13d', "Moorings",      false, "bg-blue", "", {} },
@@ -428,9 +444,8 @@ IconConfig default_icon_config() {
     { U'\uf030', "Web Cam",       false, "bg-gray", "", {} },
     { U'\uf39f', "Messenger",     true,  "bg-blue", "", {} },
     { U'\uf39e', "Social",        true,  "bg-blue", "", {} },
-  };
-
-  cfg.page2 = {
+    },
+    {
     { U'\uf5a0', "OpenCPN",       false, "bg-blue", "", {} },
     { U'\uf624', "KIP",           false, "bg-teal", "", {} },
     { U'\uf5ba', "Power",         false, "bg-teal-light", "", {} },
@@ -448,6 +463,7 @@ IconConfig default_icon_config() {
     { U'\uf011', "Commands",      false, "bg-slate-dark", "", {} },
     { U'\uf76c', "T-Storms",      false, "bg-violet", "", {} },
     { U'\uf268', "Chrome",        true,  "bg-blue", "", {} },
+    },
   };
 
   cfg.palette.reserve(default_palette_map().size());
@@ -460,13 +476,17 @@ IconConfig default_icon_config() {
 } // namespace
 
 std::string user_config_path() {
+#ifdef _WIN32
+  return RuntimeEnv::localAppDataDir() + "/sv-dashboard-gtk/sv-dashboard.yaml";
+#else
   const char* cfg_dir = g_get_user_config_dir();
   return std::string(cfg_dir ? cfg_dir : ".") + "/sv-dashboard-gtk/sv-dashboard.yaml";
+#endif
 }
 
 std::string exe_dir() {
 #ifdef _WIN32
-  return ".";
+  return RuntimeEnv::exeDir();
 #else
   std::string out = ".";
   std::array<char, 4096> buf{};
@@ -485,13 +505,10 @@ std::vector<std::string> default_config_candidates() {
   const gchar* const* data_dirs = g_get_system_data_dirs();
   for (size_t i = 0; data_dirs && data_dirs[i]; ++i) {
     paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/sv-dashboard.yaml");
-    paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/assets/sv-dashboard.yaml");
   }
   const std::string bin_dir = exe_dir();
   paths.emplace_back(bin_dir + "/../share/sv-dashboard-gtk/sv-dashboard.yaml");
   paths.emplace_back(bin_dir + "/share/sv-dashboard-gtk/sv-dashboard.yaml");
-  paths.emplace_back(bin_dir + "/../assets/sv-dashboard.yaml");
-  paths.emplace_back(bin_dir + "/assets/sv-dashboard.yaml");
   if (char* cwd = g_get_current_dir()) {
     paths.emplace_back(std::string(cwd) + "/assets/sv-dashboard.yaml");
     g_free(cwd);
@@ -565,15 +582,14 @@ IconConfig load_icon_config() {
 
   std::unordered_map<std::string, std::string> palette_map;
   IconConfig cfg;
-  cfg.page1 = read_page(root, "commands1", palette_map);
-  cfg.page2 = read_page(root, "commands2", palette_map);
+  cfg.pages = read_pages(root, palette_map);
 
   cfg.palette.reserve(palette_map.size());
   for (const auto& entry : palette_map) {
     cfg.palette.emplace_back(entry.first, entry.second);
   }
 
-  if (cfg.page1.empty() && cfg.page2.empty()) {
+  if (cfg.pages.empty()) {
     return default_icon_config();
   }
 

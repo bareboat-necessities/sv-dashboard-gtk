@@ -13,8 +13,7 @@ struct IconSpec {
 };
 
 struct IconConfig {
-  std::vector<IconSpec> page1;
-  std::vector<IconSpec> page2;
+  std::vector<std::vector<IconSpec>> pages;
   std::vector<std::pair<std::string, std::string>> palette;
 };
 

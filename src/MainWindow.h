@@ -19,6 +19,7 @@ private:
   void set_scheme(Scheme s);
   void refresh_scheme_buttons();
 
+  void show_page_index(size_t index);
   void show_page(const Glib::ustring& name);
   void refresh_nav();
 
@@ -37,8 +38,9 @@ private:
   Gtk::Button  btn_left_;
   Gtk::Button  btn_right_;
 
-  Desktop* page1_ = nullptr;
-  Desktop* page2_ = nullptr;
+  std::vector<Desktop*> pages_;
+  std::vector<Glib::ustring> page_names_;
+  size_t current_page_index_ = 0;
   std::vector<std::pair<std::string, std::string>> palette_;
 
   Gtk::Box     scheme_bar_{Gtk::ORIENTATION_HORIZONTAL};
