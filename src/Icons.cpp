@@ -237,12 +237,28 @@ bool parse_yaml_file(const std::string& path, YamlNode& out) {
         stack.push_back({indent, &parent->seq.back()});
         continue;
       }
+
+      YamlNode* target_seq = parent;
+      int item_indent = indent;
+      if (item.rfind("- ", 0) == 0) {
+        YamlNode seq_node;
+        seq_node.type = YamlNode::Type::Seq;
+        parent->seq.emplace_back(std::move(seq_node));
+        target_seq = &parent->seq.back();
+        stack.push_back({indent, target_seq});
+        item = trim_copy(item.substr(2));
+        item_indent = indent + 2;
+        if (item.empty()) {
+          continue;
+        }
+      }
+
       auto colon_pos = item.find(':');
       if (colon_pos == std::string::npos) {
         YamlNode node;
         node.type = YamlNode::Type::Scalar;
         node.scalar = strip_quotes(strip_inline_comment(item));
-        parent->seq.emplace_back(std::move(node));
+        target_seq->seq.emplace_back(std::move(node));
         continue;
       }
       std::string key = trim_copy(item.substr(0, colon_pos));
@@ -259,9 +275,14 @@ bool parse_yaml_file(const std::string& path, YamlNode& out) {
         value_node.scalar = strip_quotes(value);
       }
       map_node.map.emplace(key, std::move(value_node));
-      parent->seq.emplace_back(std::move(map_node));
-      if (value.empty()) {
-        stack.push_back({indent, &parent->seq.back()});
+      target_seq->seq.emplace_back(std::move(map_node));
+      size_t next_index = 0;
+      int next_indent = 0;
+      std::string next_content;
+      if (value.empty() ||
+          (find_next_content(lines, i + 1, next_index, next_indent, next_content) &&
+           next_indent > item_indent)) {
+        stack.push_back({item_indent, &target_seq->seq.back()});
       }
       continue;
     }
