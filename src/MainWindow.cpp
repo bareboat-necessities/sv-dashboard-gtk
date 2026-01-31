@@ -180,7 +180,7 @@ void MainWindow::handle_swipe_delta(double dx, double dy, guint32 dt_ms) {
 }
 
 void MainWindow::setup_gestures() {
-  drag_ = Gtk::GestureDrag::create(swipe_box_);
+  drag_ = Gtk::GestureDrag::create(stack_);
   drag_->set_touch_only(false);
 
   drag_->signal_drag_begin().connect([this](double, double) {
@@ -221,10 +221,6 @@ MainWindow::MainWindow() {
   stack_.add(*page1_, "page1");
   stack_.add(*page2_, "page2");
 
-  swipe_box_.set_visible_window(false);
-  swipe_box_.set_above_child(true);
-  swipe_box_.add(stack_);
-
   btn_left_.set_label(cp_to_utf8(CHEV_LEFT));
   btn_right_.set_label(cp_to_utf8(CHEV_RIGHT));
   btn_left_.set_relief(Gtk::RELIEF_NONE);
@@ -240,7 +236,7 @@ MainWindow::MainWindow() {
   btn_right_.signal_clicked().connect([this] { show_page("page2"); });
 
   root_.pack_start(btn_left_, Gtk::PACK_SHRINK, 0);
-  root_.pack_start(swipe_box_, Gtk::PACK_EXPAND_WIDGET);
+  root_.pack_start(stack_, Gtk::PACK_EXPAND_WIDGET);
   root_.pack_start(btn_right_, Gtk::PACK_SHRINK, 0);
 
   scheme_bar_.set_halign(Gtk::ALIGN_START);
