@@ -551,12 +551,8 @@ void copy_default_config_if_missing(const std::string& source, const std::string
 
 IconConfig load_icon_config() {
   const char* env_path = g_getenv("SV_DASHBOARD_CONFIG");
-  std::string config_path;
-  if (env_path && *env_path) {
-    config_path = env_path;
-  } else {
-    config_path = user_config_path();
-  }
+  const std::string user_config = user_config_path();
+  std::string config_path = (env_path && *env_path) ? env_path : user_config;
 
   if (!g_file_test(config_path.c_str(), G_FILE_TEST_EXISTS)) {
     const std::string fallback = find_default_config_path();
@@ -569,8 +565,11 @@ IconConfig load_icon_config() {
   }
 
   if (!g_file_test(config_path.c_str(), G_FILE_TEST_EXISTS)) {
+    g_message("No config file found; using built-in defaults.");
     return default_icon_config();
   }
+
+  g_message("Loading config file: %s", config_path.c_str());
 
   YamlNode root;
   if (!parse_yaml_file(config_path, root)) {
