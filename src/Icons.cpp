@@ -276,6 +276,7 @@ std::vector<std::string> default_config_candidates() {
   const gchar* const* data_dirs = g_get_system_data_dirs();
   for (size_t i = 0; data_dirs && data_dirs[i]; ++i) {
     paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/icons.json");
+    paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/assets/icons.json");
   }
   const std::string bin_dir = exe_dir();
   paths.emplace_back(bin_dir + "/../share/sv-dashboard-gtk/icons.json");
