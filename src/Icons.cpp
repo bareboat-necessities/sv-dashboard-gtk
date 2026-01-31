@@ -1,4 +1,5 @@
 #include "Icons.h"
+#include "RuntimeEnv.h"
 
 #include <glib.h>
 
@@ -460,13 +461,17 @@ IconConfig default_icon_config() {
 } // namespace
 
 std::string user_config_path() {
+#ifdef _WIN32
+  return RuntimeEnv::localAppDataDir() + "/sv-dashboard-gtk/sv-dashboard.yaml";
+#else
   const char* cfg_dir = g_get_user_config_dir();
   return std::string(cfg_dir ? cfg_dir : ".") + "/sv-dashboard-gtk/sv-dashboard.yaml";
+#endif
 }
 
 std::string exe_dir() {
 #ifdef _WIN32
-  return ".";
+  return RuntimeEnv::exeDir();
 #else
   std::string out = ".";
   std::array<char, 4096> buf{};
@@ -485,13 +490,10 @@ std::vector<std::string> default_config_candidates() {
   const gchar* const* data_dirs = g_get_system_data_dirs();
   for (size_t i = 0; data_dirs && data_dirs[i]; ++i) {
     paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/sv-dashboard.yaml");
-    paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/assets/sv-dashboard.yaml");
   }
   const std::string bin_dir = exe_dir();
   paths.emplace_back(bin_dir + "/../share/sv-dashboard-gtk/sv-dashboard.yaml");
   paths.emplace_back(bin_dir + "/share/sv-dashboard-gtk/sv-dashboard.yaml");
-  paths.emplace_back(bin_dir + "/../assets/sv-dashboard.yaml");
-  paths.emplace_back(bin_dir + "/assets/sv-dashboard.yaml");
   if (char* cwd = g_get_current_dir()) {
     paths.emplace_back(std::string(cwd) + "/assets/sv-dashboard.yaml");
     g_free(cwd);

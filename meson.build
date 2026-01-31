@@ -34,7 +34,3 @@ install_subdir('assets/fonts',
 
 install_data('assets/sv-dashboard.yaml',
   install_dir: join_paths(get_option('datadir'), 'sv-dashboard-gtk'))
-install_data('assets/sv-dashboard.yaml',
-  install_dir: join_paths(get_option('datadir'), 'sv-dashboard-gtk', 'assets'))
-install_data('assets/sv-dashboard.yaml',
-  install_dir: join_paths(get_option('bindir'), 'assets'))
