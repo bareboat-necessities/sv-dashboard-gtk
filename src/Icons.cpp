@@ -551,26 +551,42 @@ void copy_default_config_if_missing(const std::string& source, const std::string
 
 IconConfig load_icon_config() {
   const char* env_path = g_getenv("SV_DASHBOARD_CONFIG");
+  const std::string user_config = user_config_path();
   std::string config_path;
-  if (env_path && *env_path) {
-    config_path = env_path;
-  } else {
-    config_path = user_config_path();
-  }
+  std::string fallback;
 
-  if (!g_file_test(config_path.c_str(), G_FILE_TEST_EXISTS)) {
-    const std::string fallback = find_default_config_path();
+  if (!g_file_test(user_config.c_str(), G_FILE_TEST_EXISTS)) {
+    fallback = find_default_config_path();
     if (!fallback.empty()) {
-      copy_default_config_if_missing(fallback, config_path);
-      if (!g_file_test(config_path.c_str(), G_FILE_TEST_EXISTS)) {
-        config_path = fallback;
-      }
+      copy_default_config_if_missing(fallback, user_config);
     }
   }
 
+  if (env_path && *env_path) {
+    if (g_file_test(env_path, G_FILE_TEST_EXISTS)) {
+      config_path = env_path;
+    } else if (g_file_test(user_config.c_str(), G_FILE_TEST_EXISTS)) {
+      config_path = user_config;
+    } else if (fallback.empty()) {
+      fallback = find_default_config_path();
+      if (!fallback.empty()) {
+        config_path = fallback;
+      }
+    } else {
+      config_path = fallback;
+    }
+  } else if (g_file_test(user_config.c_str(), G_FILE_TEST_EXISTS)) {
+    config_path = user_config;
+  } else if (!fallback.empty()) {
+    config_path = fallback;
+  }
+
   if (!g_file_test(config_path.c_str(), G_FILE_TEST_EXISTS)) {
+    g_message("No config file found; using built-in defaults.");
     return default_icon_config();
   }
+
+  g_message("Loading config file: %s", config_path.c_str());
 
   YamlNode root;
   if (!parse_yaml_file(config_path, root)) {
