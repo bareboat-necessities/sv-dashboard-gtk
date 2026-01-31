@@ -409,9 +409,48 @@ std::vector<IconSpec> read_page(const YamlNode& root,
   return out;
 }
 
+int parse_commands_index(const std::string& key) {
+  const std::string prefix = "commands";
+  if (key.rfind(prefix, 0) != 0) return -1;
+  const std::string suffix = key.substr(prefix.size());
+  if (suffix.empty()) return -1;
+  int value = 0;
+  for (char c : suffix) {
+    if (!std::isdigit(static_cast<unsigned char>(c))) return -1;
+    value = value * 10 + (c - '0');
+  }
+  return value > 0 ? value : -1;
+}
+
+std::vector<std::vector<IconSpec>> read_pages(const YamlNode& root,
+                                              std::unordered_map<std::string, std::string>& palette) {
+  std::vector<std::pair<int, std::vector<IconSpec>>> ordered_pages;
+  if (root.type != YamlNode::Type::Map) return {};
+
+  for (const auto& entry : root.map) {
+    const int index = parse_commands_index(entry.first);
+    if (index < 0) continue;
+    auto page = read_page(root, entry.first.c_str(), palette);
+    if (!page.empty()) {
+      ordered_pages.emplace_back(index, std::move(page));
+    }
+  }
+
+  std::sort(ordered_pages.begin(), ordered_pages.end(),
+            [](const auto& a, const auto& b) { return a.first < b.first; });
+
+  std::vector<std::vector<IconSpec>> pages;
+  pages.reserve(ordered_pages.size());
+  for (auto& entry : ordered_pages) {
+    pages.emplace_back(std::move(entry.second));
+  }
+  return pages;
+}
+
 IconConfig default_icon_config() {
   IconConfig cfg;
-  cfg.page1 = {
+  cfg.pages = {
+    {
     { U'\uf5a0', "Freeboard",     false, "bg-azure", "", {} },
     { U'\uf005', "Sky",           false, "bg-indigo", "", {} },
     { U'\uf13d', "Moorings",      false, "bg-blue", "", {} },
@@ -429,9 +468,8 @@ IconConfig default_icon_config() {
     { U'\uf030', "Web Cam",       false, "bg-gray", "", {} },
     { U'\uf39f', "Messenger",     true,  "bg-blue", "", {} },
     { U'\uf39e', "Social",        true,  "bg-blue", "", {} },
-  };
-
-  cfg.page2 = {
+    },
+    {
     { U'\uf5a0', "OpenCPN",       false, "bg-blue", "", {} },
     { U'\uf624', "KIP",           false, "bg-teal", "", {} },
     { U'\uf5ba', "Power",         false, "bg-teal-light", "", {} },
@@ -449,6 +487,7 @@ IconConfig default_icon_config() {
     { U'\uf011', "Commands",      false, "bg-slate-dark", "", {} },
     { U'\uf76c', "T-Storms",      false, "bg-violet", "", {} },
     { U'\uf268', "Chrome",        true,  "bg-blue", "", {} },
+    },
   };
 
   cfg.palette.reserve(default_palette_map().size());
@@ -567,15 +606,14 @@ IconConfig load_icon_config() {
 
   std::unordered_map<std::string, std::string> palette_map;
   IconConfig cfg;
-  cfg.page1 = read_page(root, "commands1", palette_map);
-  cfg.page2 = read_page(root, "commands2", palette_map);
+  cfg.pages = read_pages(root, palette_map);
 
   cfg.palette.reserve(palette_map.size());
   for (const auto& entry : palette_map) {
     cfg.palette.emplace_back(entry.first, entry.second);
   }
 
-  if (cfg.page1.empty() && cfg.page2.empty()) {
+  if (cfg.pages.empty()) {
     return default_icon_config();
   }
 
