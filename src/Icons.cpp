@@ -114,7 +114,10 @@ std::vector<std::string> read_args(JsonObject* obj) {
   for (guint i = 0; i < n; ++i) {
     auto* node = json_array_get_element(arr, i);
     if (JSON_NODE_HOLDS_VALUE(node)) {
-      args.emplace_back(json_node_get_string(node));
+      const char* value = json_node_get_string(node);
+      if (value && *value) {
+        args.emplace_back(value);
+      }
     }
   }
   return args;
@@ -167,6 +170,9 @@ std::vector<IconSpec> read_page(JsonObject* root,
     const char* fa = get_string_member(obj, "fa", "");
     const char* bg = get_string_member(obj, "bg", "#455A64");
     const char* cmd = get_string_member(obj, "cmd", "");
+    if (!cmd || !*cmd) {
+      cmd = get_string_member(obj, "command", "");
+    }
 
     if (!fa || !*fa) {
       continue;
