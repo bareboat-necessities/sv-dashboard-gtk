@@ -54,8 +54,8 @@ jobs:
           mkdir -p dist/share/sv-dashboard-gtk/fonts dist/share/sv-dashboard-gtk/assets
           cp -f build/sv-dashboard dist/
           cp -f assets/fonts/*.ttf dist/share/sv-dashboard-gtk/fonts/
-          cp -f assets/icons.json dist/share/sv-dashboard-gtk/icons.json
-          cp -f assets/icons.json dist/share/sv-dashboard-gtk/assets/icons.json
+          cp -f assets/sv-dashboard.yaml dist/share/sv-dashboard-gtk/sv-dashboard.yaml
+          cp -f assets/sv-dashboard.yaml dist/share/sv-dashboard-gtk/assets/sv-dashboard.yaml
           tar -czf sv-dashboard-${{ env.ARTIFACT_TAG }}-linux-amd64.tar.gz -C dist .
 
       - name: Package (Debian .deb)
@@ -75,8 +75,8 @@ jobs:
 
           install -m 0755 build/sv-dashboard "$STAGE/usr/bin/sv-dashboard"
           install -m 0644 assets/fonts/*.ttf "$STAGE/usr/share/${PKG}/fonts/"
-          install -m 0644 assets/icons.json "$STAGE/usr/share/${PKG}/icons.json"
-          install -m 0644 assets/icons.json "$STAGE/usr/share/${PKG}/assets/icons.json"
+          install -m 0644 assets/sv-dashboard.yaml "$STAGE/usr/share/${PKG}/sv-dashboard.yaml"
+          install -m 0644 assets/sv-dashboard.yaml "$STAGE/usr/share/${PKG}/assets/sv-dashboard.yaml"
           [ -f README.md ] && install -m 0644 README.md "$STAGE/usr/share/doc/$PKG/README.md" || true
           [ -f LICENSE ] && install -m 0644 LICENSE "$STAGE/usr/share/doc/$PKG/copyright" || true
 
@@ -168,8 +168,8 @@ jobs:
           mkdir -p dist/share/sv-dashboard-gtk/fonts dist/share/sv-dashboard-gtk/assets
           cp -f build/sv-dashboard dist/
           cp -f assets/fonts/*.ttf dist/share/sv-dashboard-gtk/fonts/
-          cp -f assets/icons.json dist/share/sv-dashboard-gtk/icons.json
-          cp -f assets/icons.json dist/share/sv-dashboard-gtk/assets/icons.json
+          cp -f assets/sv-dashboard.yaml dist/share/sv-dashboard-gtk/sv-dashboard.yaml
+          cp -f assets/sv-dashboard.yaml dist/share/sv-dashboard-gtk/assets/sv-dashboard.yaml
           tar -czf sv-dashboard-${{ env.ARTIFACT_TAG }}-linux-arm64.tar.gz -C dist .
 
       - name: Package (Debian .deb)
@@ -189,8 +189,8 @@ jobs:
 
           install -m 0755 build/sv-dashboard "$STAGE/usr/bin/sv-dashboard"
           install -m 0644 assets/fonts/*.ttf "$STAGE/usr/share/${PKG}/fonts/"
-          install -m 0644 assets/icons.json "$STAGE/usr/share/${PKG}/icons.json"
-          install -m 0644 assets/icons.json "$STAGE/usr/share/${PKG}/assets/icons.json"
+          install -m 0644 assets/sv-dashboard.yaml "$STAGE/usr/share/${PKG}/sv-dashboard.yaml"
+          install -m 0644 assets/sv-dashboard.yaml "$STAGE/usr/share/${PKG}/assets/sv-dashboard.yaml"
           [ -f README.md ] && install -m 0644 README.md "$STAGE/usr/share/doc/$PKG/README.md" || true
           [ -f LICENSE ] && install -m 0644 LICENSE "$STAGE/usr/share/doc/$PKG/copyright" || true
 
@@ -301,8 +301,8 @@ jobs:
           
           mkdir -p dist/share/sv-dashboard-gtk/fonts dist/share/sv-dashboard-gtk/assets
           cp -f assets/fonts/*.ttf dist/share/sv-dashboard-gtk/fonts/
-          cp -f assets/icons.json dist/share/sv-dashboard-gtk/icons.json
-          cp -f assets/icons.json dist/share/sv-dashboard-gtk/assets/icons.json
+          cp -f assets/sv-dashboard.yaml dist/share/sv-dashboard-gtk/sv-dashboard.yaml
+          cp -f assets/sv-dashboard.yaml dist/share/sv-dashboard-gtk/assets/sv-dashboard.yaml
           
           # Ship gdbus.exe so GIO does not pick up Cygwin's gdbus.exe
           cp -f /mingw64/bin/gdbus.exe dist/ || true
