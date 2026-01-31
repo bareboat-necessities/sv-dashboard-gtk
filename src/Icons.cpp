@@ -332,7 +332,7 @@ IconConfig load_icon_config() {
     config_path = user_config_path();
   }
 
-  if (!g_file_test(config_path.c_str(), G_FILE_TEST_EXISTS) && !(env_path && *env_path)) {
+  if (!g_file_test(config_path.c_str(), G_FILE_TEST_EXISTS)) {
     const std::string fallback = find_default_config_path();
     if (!fallback.empty()) {
       copy_default_config_if_missing(fallback, config_path);
