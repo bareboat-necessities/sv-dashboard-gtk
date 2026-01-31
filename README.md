@@ -7,7 +7,7 @@ Two-page 5×3 tile dashboard using bundled Font Awesome 6 Free webfonts.
 sudo apt update
 sudo apt install -y \
   meson ninja-build pkg-config \
-  libgtkmm-3.0-dev libfontconfig1-dev libyaml-dev \
+  libgtkmm-3.0-dev libfontconfig1-dev \
   curl unzip # python3
 ```
 

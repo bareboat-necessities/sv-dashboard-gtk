@@ -1,12 +1,13 @@
 #include "Icons.h"
 
-#include <yaml.h>
 #include <glib.h>
 
 #include <algorithm>
 #include <array>
 #include <cctype>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 
@@ -112,134 +113,199 @@ struct YamlNode {
   std::vector<YamlNode> seq;
 };
 
-struct YamlContainer {
-  YamlNode* node{nullptr};
-  std::string pending_key;
-  bool expecting_key{false};
+struct YamlFrame {
+  int indent;
+  YamlNode* node;
 };
 
-bool parse_yaml_file(const std::string& path, YamlNode& out) {
-  FILE* fh = fopen(path.c_str(), "rb");
-  if (!fh) {
-    return false;
+std::string trim_copy(const std::string& value) {
+  size_t start = 0;
+  while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start]))) {
+    ++start;
   }
-
-  yaml_parser_t parser;
-  if (!yaml_parser_initialize(&parser)) {
-    fclose(fh);
-    return false;
+  size_t end = value.size();
+  while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+    --end;
   }
-  yaml_parser_set_input_file(&parser, fh);
+  return value.substr(start, end - start);
+}
 
-  std::vector<YamlContainer> stack;
-  yaml_event_t event;
-  bool ok = true;
+std::string strip_quotes(const std::string& value) {
+  if (value.size() >= 2) {
+    const char first = value.front();
+    const char last = value.back();
+    if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+      return value.substr(1, value.size() - 2);
+    }
+  }
+  return value;
+}
 
-  auto attach_node = [&](YamlNode&& node) -> YamlNode* {
-    if (stack.empty()) {
-      out = std::move(node);
-      return &out;
+int line_indent(const std::string& line) {
+  int count = 0;
+  for (char c : line) {
+    if (c == ' ') {
+      ++count;
+    } else {
+      break;
     }
-    auto& parent = stack.back();
-    if (parent.node->type == YamlNode::Type::Seq) {
-      parent.node->seq.emplace_back(std::move(node));
-      return &parent.node->seq.back();
-    }
-    if (parent.node->type == YamlNode::Type::Map) {
-      if (parent.pending_key.empty()) {
-        return nullptr;
+  }
+  return count;
+}
+
+bool is_blank_or_comment(const std::string& line) {
+  for (char c : line) {
+    if (std::isspace(static_cast<unsigned char>(c))) continue;
+    return c == '#';
+  }
+  return true;
+}
+
+std::string strip_inline_comment(const std::string& value) {
+  bool in_single = false;
+  bool in_double = false;
+  for (size_t i = 0; i < value.size(); ++i) {
+    char c = value[i];
+    if (c == '"' && !in_single) {
+      in_double = !in_double;
+    } else if (c == '\'' && !in_double) {
+      in_single = !in_single;
+    } else if (c == '#' && !in_single && !in_double) {
+      if (i == 0 || std::isspace(static_cast<unsigned char>(value[i - 1]))) {
+        return trim_copy(value.substr(0, i));
       }
-      const std::string key = parent.pending_key;
-      parent.node->map[key] = std::move(node);
-      parent.pending_key.clear();
-      parent.expecting_key = true;
-      return &parent.node->map.at(key);
     }
-    return nullptr;
-  };
+  }
+  return trim_copy(value);
+}
 
-  while (ok && yaml_parser_parse(&parser, &event)) {
-    switch (event.type) {
-      case YAML_STREAM_START_EVENT:
-      case YAML_STREAM_END_EVENT:
-      case YAML_DOCUMENT_START_EVENT:
-      case YAML_DOCUMENT_END_EVENT:
-        break;
-      case YAML_MAPPING_START_EVENT: {
+bool find_next_content(const std::vector<std::string>& lines,
+                       size_t start,
+                       size_t& out_index,
+                       int& out_indent,
+                       std::string& out_content) {
+  for (size_t i = start; i < lines.size(); ++i) {
+    if (is_blank_or_comment(lines[i])) continue;
+    out_index = i;
+    out_indent = line_indent(lines[i]);
+    out_content = trim_copy(lines[i].substr(static_cast<size_t>(out_indent)));
+    return true;
+  }
+  return false;
+}
+
+bool parse_yaml_file(const std::string& path, YamlNode& out) {
+  std::ifstream in(path);
+  if (!in) {
+    return false;
+  }
+
+  std::vector<std::string> lines;
+  std::string line;
+  while (std::getline(in, line)) {
+    lines.push_back(line);
+  }
+
+  out = YamlNode{};
+  out.type = YamlNode::Type::Map;
+  std::vector<YamlFrame> stack;
+  stack.push_back({-1, &out});
+
+  for (size_t i = 0; i < lines.size(); ++i) {
+    if (is_blank_or_comment(lines[i])) continue;
+
+    int indent = line_indent(lines[i]);
+    std::string content = trim_copy(lines[i].substr(static_cast<size_t>(indent)));
+    if (content.empty()) continue;
+
+    while (stack.size() > 1 && indent <= stack.back().indent) {
+      stack.pop_back();
+    }
+
+    YamlNode* parent = stack.back().node;
+
+    if (content.rfind("- ", 0) == 0) {
+      if (parent->type != YamlNode::Type::Seq) {
+        return false;
+      }
+      std::string item = trim_copy(content.substr(2));
+      if (item.empty()) {
         YamlNode node;
         node.type = YamlNode::Type::Map;
-        YamlNode* current = attach_node(std::move(node));
-        if (!current) {
-          ok = false;
-          break;
-        }
-        stack.push_back({current, "", true});
-        break;
+        parent->seq.emplace_back(std::move(node));
+        stack.push_back({indent, &parent->seq.back()});
+        continue;
       }
-      case YAML_SEQUENCE_START_EVENT: {
+      auto colon_pos = item.find(':');
+      if (colon_pos == std::string::npos) {
         YamlNode node;
-        node.type = YamlNode::Type::Seq;
-        YamlNode* current = attach_node(std::move(node));
-        if (!current) {
-          ok = false;
-          break;
-        }
-        stack.push_back({current, "", false});
-        break;
+        node.type = YamlNode::Type::Scalar;
+        node.scalar = strip_quotes(strip_inline_comment(item));
+        parent->seq.emplace_back(std::move(node));
+        continue;
       }
-      case YAML_MAPPING_END_EVENT:
-      case YAML_SEQUENCE_END_EVENT:
-        if (!stack.empty()) {
-          stack.pop_back();
-        }
-        break;
-      case YAML_SCALAR_EVENT: {
-        std::string value;
-        if (event.data.scalar.value) {
-          value.assign(reinterpret_cast<const char*>(event.data.scalar.value),
-                       event.data.scalar.length);
-        }
-        if (stack.empty()) {
-          out.type = YamlNode::Type::Scalar;
-          out.scalar = value;
-          break;
-        }
-        auto& parent = stack.back();
-        if (parent.node->type == YamlNode::Type::Map) {
-          if (parent.expecting_key) {
-            parent.pending_key = value;
-            parent.expecting_key = false;
-          } else {
-            YamlNode node;
-            node.type = YamlNode::Type::Scalar;
-            node.scalar = value;
-            parent.node->map[parent.pending_key] = std::move(node);
-            parent.pending_key.clear();
-            parent.expecting_key = true;
-          }
-        } else if (parent.node->type == YamlNode::Type::Seq) {
-          YamlNode node;
-          node.type = YamlNode::Type::Scalar;
-          node.scalar = value;
-          parent.node->seq.emplace_back(std::move(node));
-        }
-        break;
+      std::string key = trim_copy(item.substr(0, colon_pos));
+      std::string value = strip_inline_comment(item.substr(colon_pos + 1));
+      YamlNode map_node;
+      map_node.type = YamlNode::Type::Map;
+      YamlNode value_node;
+      if (value.empty()) {
+        value_node.type = YamlNode::Type::Null;
+      } else if (value == "[]") {
+        value_node.type = YamlNode::Type::Seq;
+      } else {
+        value_node.type = YamlNode::Type::Scalar;
+        value_node.scalar = strip_quotes(value);
       }
-      default:
-        break;
+      map_node.map.emplace(key, std::move(value_node));
+      parent->seq.emplace_back(std::move(map_node));
+      if (value.empty()) {
+        stack.push_back({indent, &parent->seq.back()});
+      }
+      continue;
     }
-    yaml_event_delete(&event);
+
+    if (parent->type != YamlNode::Type::Map) {
+      return false;
+    }
+
+    auto colon_pos = content.find(':');
+    if (colon_pos == std::string::npos) {
+      return false;
+    }
+    std::string key = trim_copy(content.substr(0, colon_pos));
+    std::string value = strip_inline_comment(content.substr(colon_pos + 1));
+
+    if (value == "[]") {
+      YamlNode node;
+      node.type = YamlNode::Type::Seq;
+      parent->map[key] = std::move(node);
+      continue;
+    }
+
+    if (!value.empty()) {
+      YamlNode node;
+      node.type = YamlNode::Type::Scalar;
+      node.scalar = strip_quotes(value);
+      parent->map[key] = std::move(node);
+      continue;
+    }
+
+    size_t next_index = 0;
+    int next_indent = 0;
+    std::string next_content;
+    YamlNode node;
+    if (find_next_content(lines, i + 1, next_index, next_indent, next_content) &&
+        next_indent > indent && next_content.rfind("- ", 0) == 0) {
+      node.type = YamlNode::Type::Seq;
+    } else {
+      node.type = YamlNode::Type::Map;
+    }
+    parent->map[key] = std::move(node);
+    stack.push_back({indent, &parent->map[key]});
   }
 
-  if (!ok) {
-    yaml_parser_delete(&parser);
-    fclose(fh);
-    return false;
-  }
-
-  yaml_parser_delete(&parser);
-  fclose(fh);
-  return out.type != YamlNode::Type::Null;
+  return true;
 }
 
 const YamlNode* find_child(const YamlNode& node, const char* key) {
