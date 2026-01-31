@@ -358,16 +358,14 @@ const std::unordered_map<std::string, std::string>& default_palette_map() {
   return map;
 }
 
-std::vector<IconSpec> read_page(const YamlNode& root,
-                                const char* key,
+std::vector<IconSpec> read_page(const YamlNode& arr,
                                 std::unordered_map<std::string, std::string>& palette) {
   std::vector<IconSpec> out;
-  const auto* arr = find_child(root, key);
-  if (!arr || arr->type != YamlNode::Type::Seq) return out;
+  if (arr.type != YamlNode::Type::Seq) return out;
 
-  out.reserve(arr->seq.size());
+  out.reserve(arr.seq.size());
 
-  for (const auto& obj : arr->seq) {
+  for (const auto& obj : arr.seq) {
     if (obj.type != YamlNode::Type::Map) continue;
 
     const std::string title = get_string_member(obj, "title", "");
@@ -409,40 +407,18 @@ std::vector<IconSpec> read_page(const YamlNode& root,
   return out;
 }
 
-int parse_commands_index(const std::string& key) {
-  const std::string prefix = "commands";
-  if (key.rfind(prefix, 0) != 0) return -1;
-  const std::string suffix = key.substr(prefix.size());
-  if (suffix.empty()) return -1;
-  int value = 0;
-  for (char c : suffix) {
-    if (!std::isdigit(static_cast<unsigned char>(c))) return -1;
-    value = value * 10 + (c - '0');
-  }
-  return value > 0 ? value : -1;
-}
-
 std::vector<std::vector<IconSpec>> read_pages(const YamlNode& root,
                                               std::unordered_map<std::string, std::string>& palette) {
-  std::vector<std::pair<int, std::vector<IconSpec>>> ordered_pages;
-  if (root.type != YamlNode::Type::Map) return {};
-
-  for (const auto& entry : root.map) {
-    const int index = parse_commands_index(entry.first);
-    if (index < 0) continue;
-    auto page = read_page(root, entry.first.c_str(), palette);
-    if (!page.empty()) {
-      ordered_pages.emplace_back(index, std::move(page));
-    }
-  }
-
-  std::sort(ordered_pages.begin(), ordered_pages.end(),
-            [](const auto& a, const auto& b) { return a.first < b.first; });
-
   std::vector<std::vector<IconSpec>> pages;
-  pages.reserve(ordered_pages.size());
-  for (auto& entry : ordered_pages) {
-    pages.emplace_back(std::move(entry.second));
+  const auto* node = find_child(root, "pages");
+  if (!node || node->type != YamlNode::Type::Seq) return pages;
+
+  pages.reserve(node->seq.size());
+  for (const auto& page_node : node->seq) {
+    auto page = read_page(page_node, palette);
+    if (!page.empty()) {
+      pages.emplace_back(std::move(page));
+    }
   }
   return pages;
 }
