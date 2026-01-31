@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cerrno>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -198,6 +200,7 @@ bool find_next_content(const std::vector<std::string>& lines,
 bool parse_yaml_file(const std::string& path, YamlNode& out) {
   std::ifstream in(path);
   if (!in) {
+    g_warning("Unable to open config file '%s': %s", path.c_str(), std::strerror(errno));
     return false;
   }
 
@@ -575,11 +578,15 @@ IconConfig load_icon_config() {
   const std::string user_config = user_config_path();
   std::string config_path;
   std::string fallback;
+  std::vector<std::string> fallback_reasons;
 
   if (!g_file_test(user_config.c_str(), G_FILE_TEST_EXISTS)) {
+    fallback_reasons.push_back("User config missing at " + user_config);
     fallback = find_default_config_path();
     if (!fallback.empty()) {
       copy_default_config_if_missing(fallback, user_config);
+    } else {
+      fallback_reasons.push_back("No default config found in system data directories or bundled assets");
     }
   }
 
@@ -587,13 +594,21 @@ IconConfig load_icon_config() {
     if (g_file_test(env_path, G_FILE_TEST_EXISTS)) {
       config_path = env_path;
     } else if (g_file_test(user_config.c_str(), G_FILE_TEST_EXISTS)) {
+      fallback_reasons.push_back("SV_DASHBOARD_CONFIG was set but file does not exist at " +
+                                 std::string(env_path));
       config_path = user_config;
     } else if (fallback.empty()) {
+      fallback_reasons.push_back("SV_DASHBOARD_CONFIG was set but file does not exist at " +
+                                 std::string(env_path));
       fallback = find_default_config_path();
       if (!fallback.empty()) {
         config_path = fallback;
+      } else {
+        fallback_reasons.push_back("No default config found in system data directories or bundled assets");
       }
     } else {
+      fallback_reasons.push_back("SV_DASHBOARD_CONFIG was set but file does not exist at " +
+                                 std::string(env_path));
       config_path = fallback;
     }
   } else if (g_file_test(user_config.c_str(), G_FILE_TEST_EXISTS)) {
@@ -603,7 +618,16 @@ IconConfig load_icon_config() {
   }
 
   if (!g_file_test(config_path.c_str(), G_FILE_TEST_EXISTS)) {
-    g_message("No config file found; using built-in defaults.");
+    std::ostringstream reason_stream;
+    for (size_t i = 0; i < fallback_reasons.size(); ++i) {
+      if (i > 0) reason_stream << "; ";
+      reason_stream << fallback_reasons[i];
+    }
+    std::string reasons = reason_stream.str();
+    if (reasons.empty()) {
+      reasons = "No config file found at the expected locations";
+    }
+    g_warning("Falling back to built-in defaults: %s.", reasons.c_str());
     return default_icon_config();
   }
 
@@ -611,9 +635,13 @@ IconConfig load_icon_config() {
 
   YamlNode root;
   if (!parse_yaml_file(config_path, root)) {
+    g_warning("Failed to read or parse config file '%s'; using built-in defaults.",
+              config_path.c_str());
     return default_icon_config();
   }
   if (root.type != YamlNode::Type::Map) {
+    g_warning("Config file '%s' did not contain a YAML map; using built-in defaults.",
+              config_path.c_str());
     return default_icon_config();
   }
 
@@ -627,6 +655,7 @@ IconConfig load_icon_config() {
   }
 
   if (cfg.pages.empty()) {
+    g_warning("Config file '%s' produced no pages; using built-in defaults.", config_path.c_str());
     return default_icon_config();
   }
 
