@@ -4,8 +4,15 @@
 #include <glib.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <filesystem>
+#include <string>
 #include <unordered_map>
+
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 namespace {
 
@@ -243,23 +250,91 @@ IconConfig default_icon_config() {
 
 } // namespace
 
+std::string user_config_path() {
+  const char* cfg_dir = g_get_user_config_dir();
+  return std::string(cfg_dir ? cfg_dir : ".") + "/sv-dashboard-gtk/icons.json";
+}
+
+std::string exe_dir() {
+#ifdef _WIN32
+  return ".";
+#else
+  std::string out = ".";
+  std::array<char, 4096> buf{};
+  const ssize_t len = readlink("/proc/self/exe", buf.data(), buf.size() - 1);
+  if (len > 0) {
+    buf[static_cast<size_t>(len)] = '\0';
+    std::filesystem::path p(buf.data());
+    out = p.parent_path().string();
+  }
+  return out;
+#endif
+}
+
+std::vector<std::string> default_config_candidates() {
+  std::vector<std::string> paths;
+  const gchar* const* data_dirs = g_get_system_data_dirs();
+  for (size_t i = 0; data_dirs && data_dirs[i]; ++i) {
+    paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/icons.json");
+  }
+  const std::string bin_dir = exe_dir();
+  paths.emplace_back(bin_dir + "/../assets/icons.json");
+  paths.emplace_back(bin_dir + "/assets/icons.json");
+  if (char* cwd = g_get_current_dir()) {
+    paths.emplace_back(std::string(cwd) + "/assets/icons.json");
+    g_free(cwd);
+  }
+  return paths;
+}
+
+std::string find_default_config_path() {
+  for (const auto& path : default_config_candidates()) {
+    if (g_file_test(path.c_str(), G_FILE_TEST_EXISTS)) {
+      return path;
+    }
+  }
+  return {};
+}
+
+void copy_default_config_if_missing(const std::string& source, const std::string& dest) {
+  if (source.empty() || dest.empty()) return;
+  if (g_file_test(dest.c_str(), G_FILE_TEST_EXISTS)) return;
+
+  std::filesystem::path dest_path(dest);
+  const std::string dir = dest_path.parent_path().string();
+  if (!dir.empty()) {
+    g_mkdir_with_parents(dir.c_str(), 0755);
+  }
+
+  gchar* contents = nullptr;
+  gsize len = 0;
+  GError* error = nullptr;
+  if (!g_file_get_contents(source.c_str(), &contents, &len, &error)) {
+    if (error) g_error_free(error);
+    return;
+  }
+
+  if (!g_file_set_contents(dest.c_str(), contents, len, &error)) {
+    if (error) g_error_free(error);
+  }
+  g_free(contents);
+}
+
 IconConfig load_icon_config() {
   const char* env_path = g_getenv("SV_DASHBOARD_CONFIG");
   std::string config_path;
   if (env_path && *env_path) {
     config_path = env_path;
   } else {
-    const char* cfg_dir = g_get_user_config_dir();
-    config_path = std::string(cfg_dir ? cfg_dir : ".") + "/sv-dashboard-gtk/icons.json";
+    config_path = user_config_path();
   }
 
-  if (!g_file_test(config_path.c_str(), G_FILE_TEST_EXISTS)) {
-    const gchar* const* data_dirs = g_get_system_data_dirs();
-    for (size_t i = 0; data_dirs && data_dirs[i]; ++i) {
-      std::string fallback = std::string(data_dirs[i]) + "/sv-dashboard-gtk/icons.json";
-      if (g_file_test(fallback.c_str(), G_FILE_TEST_EXISTS)) {
+  if (!g_file_test(config_path.c_str(), G_FILE_TEST_EXISTS) && !(env_path && *env_path)) {
+    const std::string fallback = find_default_config_path();
+    if (!fallback.empty()) {
+      copy_default_config_if_missing(fallback, config_path);
+      if (!g_file_test(config_path.c_str(), G_FILE_TEST_EXISTS)) {
         config_path = fallback;
-        break;
       }
     }
   }
