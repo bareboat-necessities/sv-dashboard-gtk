@@ -278,6 +278,8 @@ std::vector<std::string> default_config_candidates() {
     paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/icons.json");
   }
   const std::string bin_dir = exe_dir();
+  paths.emplace_back(bin_dir + "/../share/sv-dashboard-gtk/icons.json");
+  paths.emplace_back(bin_dir + "/share/sv-dashboard-gtk/icons.json");
   paths.emplace_back(bin_dir + "/../assets/icons.json");
   paths.emplace_back(bin_dir + "/assets/icons.json");
   if (char* cwd = g_get_current_dir()) {
