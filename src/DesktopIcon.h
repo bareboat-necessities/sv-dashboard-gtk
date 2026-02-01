@@ -6,6 +6,7 @@
 #include <gtkmm/label.h>
 #include <glibmm/ustring.h>
 #include <pangomm/fontdescription.h>
+#include <pangomm/layout.h>
 
 #include <string>
 
@@ -39,11 +40,15 @@ private:
   private:
     Glib::ustring glyph_;
     Pango::FontDescription font_;
+    Glib::RefPtr<Pango::Layout> layout_;
+    bool layout_dirty_ = true;
 
     int box_px_ = 112;
     int glyph_px_ = 56;
 
     void update_glyph_px_();
+    void mark_layout_dirty_();
+    void ensure_layout_();
   };
 
   void apply_fonts(double s);
