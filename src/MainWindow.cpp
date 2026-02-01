@@ -189,6 +189,8 @@ void MainWindow::handle_swipe_delta(double dx, double dy, guint32 dt_ms) {
 void MainWindow::setup_gestures() {
   drag_ = Gtk::GestureDrag::create(stack_);
   drag_->set_touch_only(false);
+  gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(drag_->gobj()),
+                                             GTK_PHASE_CAPTURE);
 
   drag_->signal_drag_begin().connect([this](double, double) {
     drag_claimed_ = false;
