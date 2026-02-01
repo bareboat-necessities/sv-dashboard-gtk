@@ -38,23 +38,45 @@ DesktopIcon::IconCanvas::IconCanvas() {
 
 void DesktopIcon::IconCanvas::set_glyph(const Glib::ustring& g) {
   glyph_ = g;
+  mark_layout_dirty_();
   queue_draw();
 }
 
 void DesktopIcon::IconCanvas::set_font(const Pango::FontDescription& fd) {
   font_ = fd;
+  mark_layout_dirty_();
   queue_draw();
 }
 
 void DesktopIcon::IconCanvas::set_box_px(int px) {
   box_px_ = std::max(12, px);
   update_glyph_px_();
+  mark_layout_dirty_();
   queue_resize(); // rerun size negotiation
   queue_draw();
 }
 
 void DesktopIcon::IconCanvas::update_glyph_px_() {
   glyph_px_ = std::max(6, (int)std::lround(box_px_ * ICON_FRACTION));
+}
+
+void DesktopIcon::IconCanvas::mark_layout_dirty_() {
+  layout_dirty_ = true;
+}
+
+void DesktopIcon::IconCanvas::ensure_layout_() {
+  if (!layout_) {
+    layout_ = create_pango_layout("");
+    layout_dirty_ = true;
+  }
+
+  if (!layout_dirty_) return;
+
+  layout_->set_text(glyph_);
+  Pango::FontDescription fd = font_;
+  fd.set_size(glyph_px_ * Pango::SCALE);
+  layout_->set_font_description(fd);
+  layout_dirty_ = false;
 }
 
 void DesktopIcon::IconCanvas::get_preferred_width_vfunc(int& min_w, int& nat_w) const {
@@ -77,23 +99,20 @@ bool DesktopIcon::IconCanvas::on_draw(const Cairo::RefPtr<Cairo::Context>& cr) {
 
   if (glyph_.empty()) return true;
 
+  ensure_layout_();
+
   // IMPORTANT: use NORMAL state color (fixes “color broken” when hovered/active)
   const auto fg = sc->get_color(Gtk::STATE_FLAG_NORMAL);
   cr->set_source_rgba(fg.get_red(), fg.get_green(), fg.get_blue(), fg.get_alpha());
 
-  auto layout = create_pango_layout(glyph_);
-  Pango::FontDescription fd = font_;
-  fd.set_size(glyph_px_ * Pango::SCALE);
-  layout->set_font_description(fd);
-
   int lw = 0, lh = 0;
-  layout->get_pixel_size(lw, lh);
+  layout_->get_pixel_size(lw, lh);
 
   const double x = (w - lw) * 0.5;
   const double y = (h - lh) * 0.5;
 
   cr->move_to(x, y);
-  pango_cairo_show_layout(cr->cobj(), layout->gobj());
+  pango_cairo_show_layout(cr->cobj(), layout_->gobj());
   return true;
 }
 
