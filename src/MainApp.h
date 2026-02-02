@@ -7,10 +7,10 @@
 
 class MainApp : public Gtk::Application {
 public:
-  static Glib::RefPtr<MainApp> create();
+  static Glib::RefPtr<MainApp> create(bool fullscreen, bool decorated);
 
 protected:
-  MainApp();
+  MainApp(bool fullscreen, bool decorated);
 
   void on_startup() override;
   void on_activate() override;
@@ -18,4 +18,6 @@ protected:
 private:
   // Keep registry alive for entire app lifetime
   FontRegistry font_registry_;
+  bool fullscreen_ = false;
+  bool decorated_ = true;
 };

@@ -3,12 +3,14 @@
 
 #include <iostream>
 
-Glib::RefPtr<MainApp> MainApp::create() {
-  return Glib::RefPtr<MainApp>(new MainApp());
+Glib::RefPtr<MainApp> MainApp::create(bool fullscreen, bool decorated) {
+  return Glib::RefPtr<MainApp>(new MainApp(fullscreen, decorated));
 }
 
-MainApp::MainApp()
-: Gtk::Application("github.bbn.sv_dashboard")
+MainApp::MainApp(bool fullscreen, bool decorated)
+: Gtk::Application("github.bbn.sv_dashboard"),
+  fullscreen_(fullscreen),
+  decorated_(decorated)
 {}
 
 void MainApp::on_startup() {
@@ -24,7 +26,7 @@ void MainApp::on_startup() {
 }
 
 void MainApp::on_activate() {
-  auto* win = new MainWindow();
+  auto* win = new MainWindow(fullscreen_, decorated_);
   add_window(*win);
   win->signal_hide().connect([win] { delete win; });
   win->present();
