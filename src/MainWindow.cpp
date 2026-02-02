@@ -214,9 +214,13 @@ void MainWindow::setup_gestures() {
   });
 }
 
-MainWindow::MainWindow() {
+MainWindow::MainWindow(bool fullscreen, bool decorated) {
   set_title("BBN Launcher");
   set_default_size(1400, 800);
+  set_decorated(decorated);
+  if (fullscreen) {
+    this->fullscreen();
+  }
 
   apply_css_provider_once();
 

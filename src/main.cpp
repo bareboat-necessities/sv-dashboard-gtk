@@ -31,6 +31,29 @@ int main(int argc, char** argv) {
     std::cerr << "Warning: FA fonts not registered; icons may fall back.\n";
   }
 
-  auto app = MainApp::create();
+  gboolean opt_fullscreen = FALSE;
+  gboolean opt_no_decorations = FALSE;
+
+  GOptionEntry entries[] = {
+      {"fullscreen", 'f', 0, G_OPTION_ARG_NONE, &opt_fullscreen,
+       "Launch fullscreen", nullptr},
+      {"no-decorations", 0, 0, G_OPTION_ARG_NONE, &opt_no_decorations,
+       "Disable window decorations", nullptr},
+      {nullptr}
+  };
+
+  GOptionContext* context = g_option_context_new(nullptr);
+  g_option_context_add_main_entries(context, entries, nullptr);
+  GError* error = nullptr;
+  if (!g_option_context_parse(context, &argc, &argv, &error)) {
+    std::cerr << "Failed to parse options: " << error->message << "\n";
+    g_error_free(error);
+  }
+  g_option_context_free(context);
+
+  const bool fullscreen = opt_fullscreen;
+  const bool decorated = !opt_no_decorations;
+
+  auto app = MainApp::create(fullscreen, decorated);
   return app->run(argc, argv);
 }
