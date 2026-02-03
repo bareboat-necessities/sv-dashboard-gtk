@@ -9,7 +9,7 @@ class Desktop;
 
 class MainWindow : public Gtk::Window {
 public:
-  MainWindow(bool fullscreen, bool decorated);
+  MainWindow(bool fullscreen, bool decorated, bool skip_taskbar);
 
 private:
   enum class Scheme { Day, Dusk, Night };
