@@ -33,12 +33,15 @@ int main(int argc, char** argv) {
 
   gboolean opt_fullscreen = FALSE;
   gboolean opt_no_decorations = FALSE;
+  gboolean opt_skip_taskbar = FALSE;
 
   GOptionEntry entries[] = {
       {"fullscreen", 'f', 0, G_OPTION_ARG_NONE, &opt_fullscreen,
        "Launch fullscreen", nullptr},
       {"no-decorations", 0, 0, G_OPTION_ARG_NONE, &opt_no_decorations,
        "Disable window decorations", nullptr},
+      {"skip-taskbar", 0, 0, G_OPTION_ARG_NONE, &opt_skip_taskbar,
+       "Hide window from taskbar/pager", nullptr},
       {nullptr}
   };
 
@@ -53,7 +56,8 @@ int main(int argc, char** argv) {
 
   const bool fullscreen = opt_fullscreen;
   const bool decorated = !opt_no_decorations;
+  const bool skip_taskbar = opt_skip_taskbar;
 
-  auto app = MainApp::create(fullscreen, decorated);
+  auto app = MainApp::create(fullscreen, decorated, skip_taskbar);
   return app->run(argc, argv);
 }

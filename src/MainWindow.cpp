@@ -214,12 +214,14 @@ void MainWindow::setup_gestures() {
   });
 }
 
-MainWindow::MainWindow(bool fullscreen, bool decorated) {
+MainWindow::MainWindow(bool fullscreen, bool decorated, bool skip_taskbar) {
   set_title("BBN Launcher");
   set_default_size(1400, 800);
   set_decorated(decorated);
-  set_skip_taskbar_hint(true);
-  set_skip_pager_hint(true);
+  if (skip_taskbar) {
+    set_skip_taskbar_hint(true);
+    set_skip_pager_hint(true);
+  }
   if (fullscreen) {
     this->fullscreen();
   }
