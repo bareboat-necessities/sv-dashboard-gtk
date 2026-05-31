@@ -108,258 +108,312 @@ std::string color_class_for(const std::string& color) {
   return "bg-" + slugify_color(color);
 }
 
-struct YamlNode {
-  enum class Type { Null, Scalar, Map, Seq };
+struct JsonValue {
+  enum class Type { Null, Bool, Number, String, Object, Array };
   Type type{Type::Null};
-  std::string scalar;
-  std::unordered_map<std::string, YamlNode> map;
-  std::vector<YamlNode> seq;
+  bool boolean{false};
+  double number{0.0};
+  std::string string;
+  std::unordered_map<std::string, JsonValue> object;
+  std::vector<JsonValue> array;
 };
 
-struct YamlFrame {
-  int indent;
-  YamlNode* node;
-};
+class JsonParser {
+public:
+  explicit JsonParser(std::string text) : text_(std::move(text)) {}
 
-std::string trim_copy(const std::string& value) {
-  size_t start = 0;
-  while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start]))) {
-    ++start;
-  }
-  size_t end = value.size();
-  while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
-    --end;
-  }
-  return value.substr(start, end - start);
-}
-
-std::string strip_quotes(const std::string& value) {
-  if (value.size() >= 2) {
-    const char first = value.front();
-    const char last = value.back();
-    if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
-      return value.substr(1, value.size() - 2);
+  bool parse(JsonValue& out, std::string& error) {
+    skip_ws();
+    if (!parse_value(out, error)) {
+      return false;
     }
-  }
-  return value;
-}
-
-int line_indent(const std::string& line) {
-  int count = 0;
-  for (char c : line) {
-    if (c == ' ') {
-      ++count;
-    } else {
-      break;
+    skip_ws();
+    if (pos_ != text_.size()) {
+      error = "unexpected trailing content";
+      return false;
     }
+    return true;
   }
-  return count;
-}
 
-bool is_blank_or_comment(const std::string& line) {
-  for (char c : line) {
-    if (std::isspace(static_cast<unsigned char>(c))) continue;
-    return c == '#';
+private:
+  bool parse_value(JsonValue& out, std::string& error) {
+    skip_ws();
+    if (pos_ >= text_.size()) {
+      error = "unexpected end of input";
+      return false;
+    }
+
+    const char c = text_[pos_];
+    if (c == '{') return parse_object(out, error);
+    if (c == '[') return parse_array(out, error);
+    if (c == '"') {
+      out = JsonValue{};
+      out.type = JsonValue::Type::String;
+      return parse_string(out.string, error);
+    }
+    if (c == 't') return parse_literal("true", JsonValue::Type::Bool, out, error, true);
+    if (c == 'f') return parse_literal("false", JsonValue::Type::Bool, out, error, false);
+    if (c == 'n') return parse_literal("null", JsonValue::Type::Null, out, error, false);
+    if (c == '-' || std::isdigit(static_cast<unsigned char>(c))) {
+      return parse_number(out, error);
+    }
+
+    error = "unexpected character";
+    return false;
   }
-  return true;
-}
 
-std::string strip_inline_comment(const std::string& value) {
-  bool in_single = false;
-  bool in_double = false;
-  for (size_t i = 0; i < value.size(); ++i) {
-    char c = value[i];
-    if (c == '"' && !in_single) {
-      in_double = !in_double;
-    } else if (c == '\'' && !in_double) {
-      in_single = !in_single;
-    } else if (c == '#' && !in_single && !in_double) {
-      if (i == 0 || std::isspace(static_cast<unsigned char>(value[i - 1]))) {
-        return trim_copy(value.substr(0, i));
+  bool parse_object(JsonValue& out, std::string& error) {
+    out = JsonValue{};
+    out.type = JsonValue::Type::Object;
+    ++pos_; // {
+    skip_ws();
+    if (consume('}')) return true;
+
+    while (true) {
+      skip_ws();
+      std::string key;
+      if (!parse_string(key, error)) {
+        if (error.empty()) error = "expected object key string";
+        return false;
+      }
+      skip_ws();
+      if (!consume(':')) {
+        error = "expected ':' after object key";
+        return false;
+      }
+      JsonValue value;
+      if (!parse_value(value, error)) return false;
+      out.object[std::move(key)] = std::move(value);
+      skip_ws();
+      if (consume('}')) return true;
+      if (!consume(',')) {
+        error = "expected ',' or '}' in object";
+        return false;
       }
     }
   }
-  return trim_copy(value);
-}
 
-bool find_next_content(const std::vector<std::string>& lines,
-                       size_t start,
-                       size_t& out_index,
-                       int& out_indent,
-                       std::string& out_content) {
-  for (size_t i = start; i < lines.size(); ++i) {
-    if (is_blank_or_comment(lines[i])) continue;
-    out_index = i;
-    out_indent = line_indent(lines[i]);
-    out_content = trim_copy(lines[i].substr(static_cast<size_t>(out_indent)));
+  bool parse_array(JsonValue& out, std::string& error) {
+    out = JsonValue{};
+    out.type = JsonValue::Type::Array;
+    ++pos_; // [
+    skip_ws();
+    if (consume(']')) return true;
+
+    while (true) {
+      JsonValue value;
+      if (!parse_value(value, error)) return false;
+      out.array.emplace_back(std::move(value));
+      skip_ws();
+      if (consume(']')) return true;
+      if (!consume(',')) {
+        error = "expected ',' or ']' in array";
+        return false;
+      }
+    }
+  }
+
+  bool parse_string(std::string& out, std::string& error) {
+    if (!consume('"')) {
+      error = "expected string";
+      return false;
+    }
+
+    out.clear();
+    while (pos_ < text_.size()) {
+      const char c = text_[pos_++];
+      if (c == '"') return true;
+      if (static_cast<unsigned char>(c) < 0x20) {
+        error = "control character in string";
+        return false;
+      }
+      if (c != '\\') {
+        out.push_back(c);
+        continue;
+      }
+      if (pos_ >= text_.size()) {
+        error = "unterminated escape sequence";
+        return false;
+      }
+      const char esc = text_[pos_++];
+      switch (esc) {
+        case '"': out.push_back('"'); break;
+        case '\\': out.push_back('\\'); break;
+        case '/': out.push_back('/'); break;
+        case 'b': out.push_back('\b'); break;
+        case 'f': out.push_back('\f'); break;
+        case 'n': out.push_back('\n'); break;
+        case 'r': out.push_back('\r'); break;
+        case 't': out.push_back('\t'); break;
+        case 'u':
+          if (!append_unicode_escape(out, error)) return false;
+          break;
+        default:
+          error = "invalid escape sequence";
+          return false;
+      }
+    }
+
+    error = "unterminated string";
+    return false;
+  }
+
+  bool append_unicode_escape(std::string& out, std::string& error) {
+    if (pos_ + 4 > text_.size()) {
+      error = "incomplete unicode escape";
+      return false;
+    }
+
+    unsigned int code = 0;
+    for (int i = 0; i < 4; ++i) {
+      const char c = text_[pos_++];
+      code <<= 4;
+      if (c >= '0' && c <= '9') code += static_cast<unsigned int>(c - '0');
+      else if (c >= 'a' && c <= 'f') code += static_cast<unsigned int>(c - 'a' + 10);
+      else if (c >= 'A' && c <= 'F') code += static_cast<unsigned int>(c - 'A' + 10);
+      else {
+        error = "invalid unicode escape";
+        return false;
+      }
+    }
+
+    if (code <= 0x7F) {
+      out.push_back(static_cast<char>(code));
+    } else if (code <= 0x7FF) {
+      out.push_back(static_cast<char>(0xC0 | (code >> 6)));
+      out.push_back(static_cast<char>(0x80 | (code & 0x3F)));
+    } else {
+      out.push_back(static_cast<char>(0xE0 | (code >> 12)));
+      out.push_back(static_cast<char>(0x80 | ((code >> 6) & 0x3F)));
+      out.push_back(static_cast<char>(0x80 | (code & 0x3F)));
+    }
     return true;
   }
-  return false;
-}
 
-bool parse_yaml_file(const std::string& path, YamlNode& out) {
+  bool parse_number(JsonValue& out, std::string& error) {
+    const size_t start = pos_;
+    if (text_[pos_] == '-') ++pos_;
+    if (pos_ >= text_.size()) {
+      error = "incomplete number";
+      return false;
+    }
+    if (text_[pos_] == '0') {
+      ++pos_;
+    } else if (std::isdigit(static_cast<unsigned char>(text_[pos_]))) {
+      while (pos_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[pos_]))) ++pos_;
+    } else {
+      error = "invalid number";
+      return false;
+    }
+    if (pos_ < text_.size() && text_[pos_] == '.') {
+      ++pos_;
+      if (pos_ >= text_.size() || !std::isdigit(static_cast<unsigned char>(text_[pos_]))) {
+        error = "invalid number fraction";
+        return false;
+      }
+      while (pos_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[pos_]))) ++pos_;
+    }
+    if (pos_ < text_.size() && (text_[pos_] == 'e' || text_[pos_] == 'E')) {
+      ++pos_;
+      if (pos_ < text_.size() && (text_[pos_] == '+' || text_[pos_] == '-')) ++pos_;
+      if (pos_ >= text_.size() || !std::isdigit(static_cast<unsigned char>(text_[pos_]))) {
+        error = "invalid number exponent";
+        return false;
+      }
+      while (pos_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[pos_]))) ++pos_;
+    }
+
+    out = JsonValue{};
+    out.type = JsonValue::Type::Number;
+    try {
+      out.number = std::stod(text_.substr(start, pos_ - start));
+    } catch (...) {
+      error = "invalid number";
+      return false;
+    }
+    return true;
+  }
+
+  bool parse_literal(const char* literal,
+                     JsonValue::Type type,
+                     JsonValue& out,
+                     std::string& error,
+                     bool boolean) {
+    const size_t len = std::strlen(literal);
+    if (text_.compare(pos_, len, literal) != 0) {
+      error = "invalid literal";
+      return false;
+    }
+    pos_ += len;
+    out = JsonValue{};
+    out.type = type;
+    out.boolean = boolean;
+    return true;
+  }
+
+  bool consume(char expected) {
+    if (pos_ < text_.size() && text_[pos_] == expected) {
+      ++pos_;
+      return true;
+    }
+    return false;
+  }
+
+  void skip_ws() {
+    while (pos_ < text_.size() && std::isspace(static_cast<unsigned char>(text_[pos_]))) {
+      ++pos_;
+    }
+  }
+
+  std::string text_;
+  size_t pos_{0};
+};
+
+bool parse_json_file(const std::string& path, JsonValue& out) {
   std::ifstream in(path);
   if (!in) {
     g_warning("Unable to open config file '%s': %s", path.c_str(), std::strerror(errno));
     return false;
   }
 
-  std::vector<std::string> lines;
-  std::string line;
-  while (std::getline(in, line)) {
-    lines.push_back(line);
+  std::ostringstream buffer;
+  buffer << in.rdbuf();
+  std::string error;
+  JsonParser parser(buffer.str());
+  if (!parser.parse(out, error)) {
+    g_warning("Unable to parse JSON config file '%s': %s", path.c_str(), error.c_str());
+    return false;
   }
-
-  out = YamlNode{};
-  out.type = YamlNode::Type::Map;
-  std::vector<YamlFrame> stack;
-  stack.push_back({-1, &out});
-
-  for (size_t i = 0; i < lines.size(); ++i) {
-    if (is_blank_or_comment(lines[i])) continue;
-
-    int indent = line_indent(lines[i]);
-    std::string content = trim_copy(lines[i].substr(static_cast<size_t>(indent)));
-    if (content.empty()) continue;
-
-    while (stack.size() > 1 && indent <= stack.back().indent) {
-      stack.pop_back();
-    }
-
-    YamlNode* parent = stack.back().node;
-
-    if (content.rfind("- ", 0) == 0) {
-      if (parent->type != YamlNode::Type::Seq) {
-        return false;
-      }
-      std::string item = trim_copy(content.substr(2));
-      if (item.empty()) {
-        YamlNode node;
-        node.type = YamlNode::Type::Map;
-        parent->seq.emplace_back(std::move(node));
-        stack.push_back({indent, &parent->seq.back()});
-        continue;
-      }
-
-      YamlNode* target_seq = parent;
-      int item_indent = indent;
-      if (item.rfind("- ", 0) == 0) {
-        YamlNode seq_node;
-        seq_node.type = YamlNode::Type::Seq;
-        parent->seq.emplace_back(std::move(seq_node));
-        target_seq = &parent->seq.back();
-        stack.push_back({indent, target_seq});
-        item = trim_copy(item.substr(2));
-        item_indent = indent + 2;
-        if (item.empty()) {
-          continue;
-        }
-      }
-
-      auto colon_pos = item.find(':');
-      if (colon_pos == std::string::npos) {
-        YamlNode node;
-        node.type = YamlNode::Type::Scalar;
-        node.scalar = strip_quotes(strip_inline_comment(item));
-        target_seq->seq.emplace_back(std::move(node));
-        continue;
-      }
-      std::string key = trim_copy(item.substr(0, colon_pos));
-      std::string value = strip_inline_comment(item.substr(colon_pos + 1));
-      YamlNode map_node;
-      map_node.type = YamlNode::Type::Map;
-      YamlNode value_node;
-      if (value.empty()) {
-        value_node.type = YamlNode::Type::Null;
-      } else if (value == "[]") {
-        value_node.type = YamlNode::Type::Seq;
-      } else {
-        value_node.type = YamlNode::Type::Scalar;
-        value_node.scalar = strip_quotes(value);
-      }
-      map_node.map.emplace(key, std::move(value_node));
-      target_seq->seq.emplace_back(std::move(map_node));
-      size_t next_index = 0;
-      int next_indent = 0;
-      std::string next_content;
-      if (value.empty() ||
-          (find_next_content(lines, i + 1, next_index, next_indent, next_content) &&
-           next_indent > item_indent)) {
-        stack.push_back({item_indent, &target_seq->seq.back()});
-      }
-      continue;
-    }
-
-    if (parent->type != YamlNode::Type::Map) {
-      return false;
-    }
-
-    auto colon_pos = content.find(':');
-    if (colon_pos == std::string::npos) {
-      return false;
-    }
-    std::string key = trim_copy(content.substr(0, colon_pos));
-    std::string value = strip_inline_comment(content.substr(colon_pos + 1));
-
-    if (value == "[]") {
-      YamlNode node;
-      node.type = YamlNode::Type::Seq;
-      parent->map[key] = std::move(node);
-      continue;
-    }
-
-    if (!value.empty()) {
-      YamlNode node;
-      node.type = YamlNode::Type::Scalar;
-      node.scalar = strip_quotes(value);
-      parent->map[key] = std::move(node);
-      continue;
-    }
-
-    size_t next_index = 0;
-    int next_indent = 0;
-    std::string next_content;
-    YamlNode node;
-    if (find_next_content(lines, i + 1, next_index, next_indent, next_content) &&
-        next_indent > indent && next_content.rfind("- ", 0) == 0) {
-      node.type = YamlNode::Type::Seq;
-    } else {
-      node.type = YamlNode::Type::Map;
-    }
-    parent->map[key] = std::move(node);
-    stack.push_back({indent, &parent->map[key]});
-  }
-
   return true;
 }
 
-const YamlNode* find_child(const YamlNode& node, const char* key) {
-  if (node.type != YamlNode::Type::Map) return nullptr;
-  auto it = node.map.find(key);
-  if (it == node.map.end()) return nullptr;
+const JsonValue* find_child(const JsonValue& node, const char* key) {
+  if (node.type != JsonValue::Type::Object) return nullptr;
+  auto it = node.object.find(key);
+  if (it == node.object.end()) return nullptr;
   return &it->second;
 }
 
-std::vector<std::string> read_args(const YamlNode& obj) {
+std::vector<std::string> read_args(const JsonValue& obj) {
   std::vector<std::string> args;
   const auto* args_node = find_child(obj, "args");
-  if (!args_node || args_node->type != YamlNode::Type::Seq) return args;
-  args.reserve(args_node->seq.size());
-  for (const auto& node : args_node->seq) {
-    if (node.type != YamlNode::Type::Scalar) continue;
-    if (!node.scalar.empty()) {
-      args.emplace_back(node.scalar);
+  if (!args_node || args_node->type != JsonValue::Type::Array) return args;
+  args.reserve(args_node->array.size());
+  for (const auto& node : args_node->array) {
+    if (node.type != JsonValue::Type::String) continue;
+    if (!node.string.empty()) {
+      args.emplace_back(node.string);
     }
   }
   return args;
 }
 
-std::string get_string_member(const YamlNode& obj,
+std::string get_string_member(const JsonValue& obj,
                               const char* key,
                               const char* fallback) {
   const auto* node = find_child(obj, key);
-  if (node && node->type == YamlNode::Type::Scalar) {
-    return node->scalar;
+  if (node && node->type == JsonValue::Type::String) {
+    return node->string;
   }
   return fallback ? fallback : "";
 }
@@ -382,15 +436,15 @@ const std::unordered_map<std::string, std::string>& default_palette_map() {
   return map;
 }
 
-std::vector<IconSpec> read_page(const YamlNode& arr,
+std::vector<IconSpec> read_page(const JsonValue& arr,
                                 std::unordered_map<std::string, std::string>& palette) {
   std::vector<IconSpec> out;
-  if (arr.type != YamlNode::Type::Seq) return out;
+  if (arr.type != JsonValue::Type::Array) return out;
 
-  out.reserve(arr.seq.size());
+  out.reserve(arr.array.size());
 
-  for (const auto& obj : arr.seq) {
-    if (obj.type != YamlNode::Type::Map) continue;
+  for (const auto& obj : arr.array) {
+    if (obj.type != JsonValue::Type::Object) continue;
 
     const std::string title = get_string_member(obj, "title", "");
     const std::string fa = get_string_member(obj, "fa", "");
@@ -431,14 +485,14 @@ std::vector<IconSpec> read_page(const YamlNode& arr,
   return out;
 }
 
-std::vector<std::vector<IconSpec>> read_pages(const YamlNode& root,
+std::vector<std::vector<IconSpec>> read_pages(const JsonValue& root,
                                               std::unordered_map<std::string, std::string>& palette) {
   std::vector<std::vector<IconSpec>> pages;
   const auto* node = find_child(root, "pages");
-  if (!node || node->type != YamlNode::Type::Seq) return pages;
+  if (!node || node->type != JsonValue::Type::Array) return pages;
 
-  pages.reserve(node->seq.size());
-  for (const auto& page_node : node->seq) {
+  pages.reserve(node->array.size());
+  for (const auto& page_node : node->array) {
     auto page = read_page(page_node, palette);
     if (!page.empty()) {
       pages.emplace_back(std::move(page));
@@ -501,10 +555,10 @@ IconConfig default_icon_config() {
 
 std::string user_config_path() {
 #ifdef _WIN32
-  return RuntimeEnv::localAppDataDir() + "/sv-dashboard-gtk/sv-dashboard.yaml";
+  return RuntimeEnv::localAppDataDir() + "/sv-dashboard-gtk/sv-dashboard.json";
 #else
   const char* cfg_dir = g_get_user_config_dir();
-  return std::string(cfg_dir ? cfg_dir : ".") + "/sv-dashboard-gtk/sv-dashboard.yaml";
+  return std::string(cfg_dir ? cfg_dir : ".") + "/sv-dashboard-gtk/sv-dashboard.json";
 #endif
 }
 
@@ -528,13 +582,13 @@ std::vector<std::string> default_config_candidates() {
   std::vector<std::string> paths;
   const gchar* const* data_dirs = g_get_system_data_dirs();
   for (size_t i = 0; data_dirs && data_dirs[i]; ++i) {
-    paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/sv-dashboard.yaml");
+    paths.emplace_back(std::string(data_dirs[i]) + "/sv-dashboard-gtk/sv-dashboard.json");
   }
   const std::string bin_dir = exe_dir();
-  paths.emplace_back(bin_dir + "/../share/sv-dashboard-gtk/sv-dashboard.yaml");
-  paths.emplace_back(bin_dir + "/share/sv-dashboard-gtk/sv-dashboard.yaml");
+  paths.emplace_back(bin_dir + "/../share/sv-dashboard-gtk/sv-dashboard.json");
+  paths.emplace_back(bin_dir + "/share/sv-dashboard-gtk/sv-dashboard.json");
   if (char* cwd = g_get_current_dir()) {
-    paths.emplace_back(std::string(cwd) + "/assets/sv-dashboard.yaml");
+    paths.emplace_back(std::string(cwd) + "/assets/sv-dashboard.json");
     g_free(cwd);
   }
   return paths;
@@ -633,14 +687,14 @@ IconConfig load_icon_config() {
 
   g_message("Loading config file: %s", config_path.c_str());
 
-  YamlNode root;
-  if (!parse_yaml_file(config_path, root)) {
+  JsonValue root;
+  if (!parse_json_file(config_path, root)) {
     g_warning("Failed to read or parse config file '%s'; using built-in defaults.",
               config_path.c_str());
     return default_icon_config();
   }
-  if (root.type != YamlNode::Type::Map) {
-    g_warning("Config file '%s' did not contain a YAML map; using built-in defaults.",
+  if (root.type != JsonValue::Type::Object) {
+    g_warning("Config file '%s' did not contain a JSON object; using built-in defaults.",
               config_path.c_str());
     return default_icon_config();
   }
